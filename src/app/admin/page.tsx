@@ -70,6 +70,7 @@ type UserRow = {
   role: string;
   status: string;
   auth_provider: string;
+  must_change_password: number;
 };
 type InviteRow = {
   id: string;
@@ -87,6 +88,8 @@ function UsersTab() {
   const [role, setRole] = useState("member");
   const [lastInviteUrl, setLastInviteUrl] = useState("");
   const [error, setError] = useState("");
+  // Shown once, right after a reset — the plaintext is never stored.
+  const [issued, setIssued] = useState<{ email: string; password: string } | null>(null);
 
   const load = useCallback(async () => {
     const res = await fetch("/api/admin/users");
@@ -125,6 +128,21 @@ function UsersTab() {
       body: JSON.stringify(body),
     });
     if (!res.ok) alert((await res.json()).error);
+    load();
+  };
+
+  const resetPassword = async (u: UserRow) => {
+    if (
+      !confirm(
+        `Issue a new temporary password for ${u.email}?\n\nTheir current password stops working immediately, and they must set their own the next time they sign in.`
+      )
+    ) {
+      return;
+    }
+    const res = await fetch(`/api/admin/users/${u.id}/password`, { method: "POST" });
+    const data = await res.json();
+    if (!res.ok) return alert(data.error ?? "Could not reset the password");
+    setIssued(data);
     load();
   };
 
@@ -168,6 +186,35 @@ function UsersTab() {
         </div>
       )}
 
+      {issued && (
+        <div className="rounded-xl border border-accent bg-accent-soft px-4 py-3 text-sm">
+          <div className="font-medium">Temporary password for {issued.email}</div>
+          <div className="mt-1.5 flex items-center gap-2">
+            <code className="rounded bg-surface px-2 py-1 font-mono text-base tracking-wide">
+              {issued.password}
+            </code>
+            <button
+              onClick={() => navigator.clipboard.writeText(issued.password)}
+              className="rounded p-1 text-muted hover:text-foreground cursor-pointer"
+              aria-label="Copy password"
+            >
+              <Copy className="size-4" />
+            </button>
+            <button
+              onClick={() => setIssued(null)}
+              className="ml-auto text-xs text-muted hover:text-foreground cursor-pointer"
+            >
+              Dismiss
+            </button>
+          </div>
+          <p className="mt-2 text-xs text-muted">
+            Shown once — it is not stored anywhere in readable form. Hand it over
+            through a channel you trust; they will be made to replace it on their
+            next sign-in.
+          </p>
+        </div>
+      )}
+
       <section>
         <h2 className="mb-2 text-sm font-semibold">Users</h2>
         <div className="overflow-hidden rounded-xl border border-border-app">
@@ -182,7 +229,10 @@ function UsersTab() {
                   <td className="px-4 py-2.5">
                     <Badge tone={u.role === "admin" ? "accent" : "neutral"}>{u.role}</Badge>{" "}
                     {u.status !== "active" && <Badge tone="danger">disabled</Badge>}{" "}
-                    {u.auth_provider === "microsoft" && <Badge tone="neutral">SSO</Badge>}
+                    {u.auth_provider === "microsoft" && <Badge tone="neutral">SSO</Badge>}{" "}
+                    {u.must_change_password === 1 && (
+                      <Badge tone="warn">password not set yet</Badge>
+                    )}
                   </td>
                   <td className="px-4 py-2.5 text-right text-xs">
                     <button
@@ -193,6 +243,14 @@ function UsersTab() {
                     >
                       {u.role === "admin" ? "Make member" : "Make admin"}
                     </button>
+                    {u.auth_provider === "password" && (
+                      <button
+                        onClick={() => resetPassword(u)}
+                        className="mr-3 text-muted hover:text-foreground cursor-pointer"
+                      >
+                        Reset password
+                      </button>
+                    )}
                     <button
                       onClick={() =>
                         patchUser(u.id, {

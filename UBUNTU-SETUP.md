@@ -4,7 +4,45 @@ Written for Ubuntu 22.04 LTS and 24.04 LTS. Every command is run as a user
 with `sudo`. Total time: about 20 minutes, most of it waiting on `npm ci`.
 
 The result: the app running under systemd as a dedicated service account,
-behind Apache with HTTPS, starting automatically on reboot.
+serving HTTPS directly on port 3005, starting automatically on reboot. There
+is no reverse proxy — Node terminates TLS itself.
+
+---
+
+## The short version
+
+```bash
+git clone https://github.com/M-S-D-P/tesseract_lite.git
+cd tesseract_lite
+sudo ./scripts/install-ubuntu.sh
+```
+
+That script does everything in this guide: installs Node and the build
+toolchain, creates the `tesseract` service account, copies the app into
+`/opt/tesseract/app`, generates a self-signed TLS certificate for the host,
+writes `.env.local` with a random `AUTH_SECRET`, builds, seeds the accounts,
+and registers and starts the systemd unit. It prints the seeded passwords
+once at the end.
+
+It is safe to re-run: it will not overwrite `.env.local`, an existing
+certificate, or existing accounts.
+
+Different address or port:
+
+```bash
+sudo BIND_HOST=10.2.0.28 PORT=3005 ./scripts/install-ubuntu.sh
+```
+
+Afterwards there is exactly one thing left to do — put your Anthropic key in
+`/opt/tesseract/app/.env.local` and restart:
+
+```bash
+sudo nano /opt/tesseract/app/.env.local     # ANTHROPIC_API_KEY=sk-ant-...
+sudo systemctl restart tesseract
+```
+
+The rest of this document is the same work done by hand, for when you want to
+understand or change a step.
 
 ---
 
@@ -14,7 +52,7 @@ behind Apache with HTTPS, starting automatically on reboot.
 |---|---|---|
 | Ubuntu server, 2 vCPU / 4 GB RAM minimum | 4 GB is comfortable; the local embedder is the memory-hungry part | your infrastructure team |
 | An Anthropic API key with credit | every answer is a Claude call | console.anthropic.com → API keys |
-| A hostname pointing at the server | e.g. `tesseract.cubesmart.com` | your DNS team |
+| The address users will reach it on | this deployment uses `10.2.0.28:3005` | your infrastructure team |
 | GitHub token (optional) | only for **private** repositories | github.com → Settings → Developer settings |
 
 Disk: 20 GB is plenty for the app and a few large repositories. Indexing a
@@ -23,6 +61,10 @@ very large codebase is the main consumer.
 You do **not** need a database server — see step 3. PostgreSQL with pgvector
 is supported as an alternative vector store and is covered in step 4, but it
 is entirely optional.
+
+You do **not** need Apache or nginx. The app listens on 3005 with TLS of its
+own. If your environment requires everything to sit behind Apache, there is an
+appendix at the end.
 
 ---
 
@@ -266,13 +308,23 @@ sudo -u tesseract cp .env.example .env.local
 sudo -u tesseract nano .env.local
 ```
 
-Fill in three values:
+Fill in:
 
 ```ini
 ANTHROPIC_API_KEY=sk-ant-...
 AUTH_SECRET=<paste the output of: openssl rand -base64 48>
-APP_URL=https://tesseract.cubesmart.com
+APP_URL=https://10.2.0.28:3005
+PORT=3005
+HOSTNAME=0.0.0.0
+
+# Generated in the next step.
+TLS_CERT_PATH=/opt/tesseract/app/certs/server.crt
+TLS_KEY_PATH=/opt/tesseract/app/certs/server.key
 ```
+
+`HOSTNAME=0.0.0.0` makes it listen on every interface. Bind it to one address
+instead if the box is multi-homed and you only want it on the internal
+network.
 
 Then lock the file down — it holds your API key:
 
@@ -301,6 +353,47 @@ route table when it succeeds.
 
 ---
 
+## 8a. The TLS certificate
+
+The app serves HTTPS itself, so it needs a certificate and key. A public CA
+cannot issue one for a private address like `10.2.0.28`, so unless you have an
+internal CA, this is self-signed.
+
+```bash
+sudo -u tesseract mkdir -p /opt/tesseract/app/certs
+sudo -u tesseract openssl req -x509 -nodes -newkey rsa:2048 -days 825 \
+  -keyout /opt/tesseract/app/certs/server.key \
+  -out    /opt/tesseract/app/certs/server.crt \
+  -subj "/CN=10.2.0.28/O=CubeSmart/OU=Tesseract" \
+  -addext "subjectAltName=IP:10.2.0.28" \
+  -addext "basicConstraints=CA:FALSE" \
+  -addext "keyUsage=digitalSignature,keyEncipherment" \
+  -addext "extendedKeyUsage=serverAuth"
+
+sudo chmod 600 /opt/tesseract/app/certs/server.key
+sudo chmod 644 /opt/tesseract/app/certs/server.crt
+```
+
+**`subjectAltName` is not optional.** Modern browsers ignore the common name
+entirely; without the `IP:` entry every visit fails with
+`ERR_CERT_COMMON_NAME_INVALID` and there is no way to click past it. Use
+`DNS:hostname` instead of `IP:` if you are serving on a name.
+
+Because it is self-signed, browsers show a warning on first visit. Three ways
+to deal with that, best first:
+
+1. Have your internal CA issue the certificate, and replace the two files.
+   The CA is already trusted on managed machines, so nothing warns.
+2. Push `server.crt` to clients as a trusted root via group policy.
+3. Let people click through the warning once per browser. Workable for
+   fifteen users; it does train them to dismiss certificate warnings, which
+   is a habit worth not building.
+
+If your CA sends an intermediate chain, save it alongside and add
+`TLS_CA_PATH=/opt/tesseract/app/certs/chain.pem` to `.env.local`.
+
+---
+
 ## 9. Create the accounts
 
 ```bash
@@ -321,6 +414,11 @@ sudo -u tesseract rm data/seed-credentials.txt
 Re-running `npm run seed` later is safe: it adds only missing accounts and
 never changes an existing password.
 
+Each of these accounts is marked as still holding a handed-over password.
+Signing in with one leads straight to a change-password screen, and every
+other page and API refuses until a new password is set. So the passwords above
+only have to survive the trip to their owner.
+
 ---
 
 ## 10. Run it under systemd
@@ -340,8 +438,8 @@ User=tesseract
 Group=tesseract
 WorkingDirectory=/opt/tesseract/app
 Environment=NODE_ENV=production
-Environment=PORT=3002
-ExecStart=/usr/bin/npm run start
+# server.mjs reads PORT, HOSTNAME and the TLS paths from .env.local.
+ExecStart=/usr/bin/node /opt/tesseract/app/server.mjs
 Restart=always
 RestartSec=5
 
@@ -364,114 +462,38 @@ sudo systemctl enable --now tesseract
 sudo systemctl status tesseract
 ```
 
-It should report `active (running)`. Confirm it answers:
+It should report `active (running)`. The log line on startup tells you which
+scheme it picked:
 
 ```bash
-curl -I http://localhost:3002/login     # expect HTTP/1.1 200 OK
+sudo journalctl -u tesseract -n 5 --no-pager
+# Tesseract Lite ready on https://0.0.0.0:3005
 ```
 
----
-
-## 11. Put Apache in front with HTTPS
-
-### Install and enable the modules
+If it says `http://` instead, the TLS paths in `.env.local` are missing or
+wrong and it fell back to plain HTTP. Confirm it answers — `-k` because the
+certificate is self-signed:
 
 ```bash
-sudo apt install -y apache2
-sudo a2enmod proxy proxy_http headers ssl rewrite
-sudo systemctl restart apache2
+curl -kI https://localhost:3005/login     # expect HTTP/1.1 200 OK
 ```
 
-`proxy` and `proxy_http` do the reverse proxying, `headers` sets
-`X-Forwarded-Proto` so the app builds correct links, and `ssl` is needed
-before certbot can install a certificate.
-
-### The virtual host
-
-```bash
-sudo nano /etc/apache2/sites-available/tesseract.conf
-```
-
-```apache
-<VirtualHost *:80>
-    ServerName tesseract.cubesmart.com
-
-    # Repository and folder uploads are large. Apache's default is unlimited,
-    # but set it explicitly so the limit is a decision, not an accident.
-    LimitRequestBody 536870912
-
-    ProxyPreserveHost On
-    RequestHeader set X-Forwarded-Proto "http"
-
-    # flushpackets=on forwards each chunk as it arrives instead of buffering
-    # the response. Answers stream token by token, so without it they land in
-    # one lump after a long silence.
-    ProxyPass        / http://127.0.0.1:3002/ flushpackets=on timeout=600
-    ProxyPassReverse / http://127.0.0.1:3002/
-
-    # Compression buffers the stream and defeats the above.
-    SetEnv no-gzip 1
-    <Location />
-        SetEnvIfNoCase Content-Type text/event-stream no-gzip=1
-    </Location>
-
-    ErrorLog  ${APACHE_LOG_DIR}/tesseract-error.log
-    CustomLog ${APACHE_LOG_DIR}/tesseract-access.log combined
-</VirtualHost>
-```
-
-Long ingestions and long answers both outlive Apache's 60-second default, so
-raise the proxy timeout globally too:
-
-```bash
-echo "ProxyTimeout 600" | sudo tee /etc/apache2/conf-available/tesseract-timeout.conf
-sudo a2enconf tesseract-timeout
-```
-
-Enable the site and drop the Ubuntu placeholder:
-
-```bash
-sudo a2ensite tesseract
-sudo a2dissite 000-default
-sudo apache2ctl configtest        # expect: Syntax OK
-sudo systemctl reload apache2
-```
-
-### Add the certificate
-
-```bash
-sudo apt install -y certbot python3-certbot-apache
-sudo certbot --apache -d tesseract.cubesmart.com
-```
-
-Certbot writes `tesseract-le-ssl.conf`, adds the HTTP→HTTPS redirect, and
-installs a renewal timer. **One thing it does not do:** the new TLS virtual
-host is a copy, so re-check that `RequestHeader set X-Forwarded-Proto` reads
-`"https"` in it. If it still says `http`, invite links and redirects come out
-as insecure URLs:
-
-```bash
-sudo nano /etc/apache2/sites-available/tesseract-le-ssl.conf
-# RequestHeader set X-Forwarded-Proto "https"
-sudo systemctl reload apache2
-```
-
-### Close the app port
-
-Apache should be the only way in:
+### Open the port
 
 ```bash
 sudo ufw allow OpenSSH
-sudo ufw allow 'Apache Full'
+sudo ufw allow 3005/tcp
 sudo ufw enable
 ```
 
-`Apache Full` opens 80 and 443. Port 3002 stays bound to localhost and is
-never exposed.
+Ports above 1024 need no special privileges, which is why the service runs
+unprivileged and still binds 3005 directly.
+
+That is the whole deployment — carry on to step 11.
 
 ---
 
-## 12. First login
+## 11. First login
 
 Open `https://tesseract.cubesmart.com` and sign in as
 `smallela@cubesmart.com` with the password from step 9.
@@ -556,5 +578,116 @@ Certbot's generated `tesseract-le-ssl.conf` still carries
 `RequestHeader set X-Forwarded-Proto "http"`. Change it to `https` and reload.
 
 **502 Proxy Error from Apache**
-The app is not running or not listening on 3002.
+The app is not running or not listening on 3005.
 `sudo systemctl status tesseract`, then `sudo journalctl -u tesseract -n 50`.
+
+---
+
+## Appendix: putting Apache in front
+
+**You do not need this.** The app serves HTTPS on 3005 by itself. Use this
+only if policy requires everything behind the standard web server, or you want
+it on 443 without giving Node a privileged port.
+
+If you do, let Apache own TLS and have the app speak plain HTTP behind it:
+remove `TLS_CERT_PATH` and `TLS_KEY_PATH` from `.env.local`, set
+`APP_URL=https://tesseract.cubesmart.com`, and restart. Leaving TLS on in both
+places means Apache would have to proxy over HTTPS to a self-signed backend,
+which needs `SSLProxyEngine` and verification switches — more moving parts
+than it is worth.
+
+### Install and enable the modules
+
+```bash
+sudo apt install -y apache2
+sudo a2enmod proxy proxy_http headers ssl rewrite
+sudo systemctl restart apache2
+```
+
+`proxy` and `proxy_http` do the reverse proxying, `headers` sets
+`X-Forwarded-Proto` so the app builds correct links, and `ssl` is needed
+before certbot can install a certificate.
+
+### The virtual host
+
+```bash
+sudo nano /etc/apache2/sites-available/tesseract.conf
+```
+
+```apache
+<VirtualHost *:80>
+    ServerName tesseract.cubesmart.com
+
+    # Repository and folder uploads are large. Apache's default is unlimited,
+    # but set it explicitly so the limit is a decision, not an accident.
+    LimitRequestBody 536870912
+
+    ProxyPreserveHost On
+    RequestHeader set X-Forwarded-Proto "http"
+
+    # flushpackets=on forwards each chunk as it arrives instead of buffering
+    # the response. Answers stream token by token, so without it they land in
+    # one lump after a long silence.
+    ProxyPass        / http://127.0.0.1:3005/ flushpackets=on timeout=600
+    ProxyPassReverse / http://127.0.0.1:3005/
+
+    # Compression buffers the stream and defeats the above.
+    SetEnv no-gzip 1
+    <Location />
+        SetEnvIfNoCase Content-Type text/event-stream no-gzip=1
+    </Location>
+
+    ErrorLog  ${APACHE_LOG_DIR}/tesseract-error.log
+    CustomLog ${APACHE_LOG_DIR}/tesseract-access.log combined
+</VirtualHost>
+```
+
+Long ingestions and long answers both outlive Apache's 60-second default, so
+raise the proxy timeout globally too:
+
+```bash
+echo "ProxyTimeout 600" | sudo tee /etc/apache2/conf-available/tesseract-timeout.conf
+sudo a2enconf tesseract-timeout
+```
+
+Enable the site and drop the Ubuntu placeholder:
+
+```bash
+sudo a2ensite tesseract
+sudo a2dissite 000-default
+sudo apache2ctl configtest        # expect: Syntax OK
+sudo systemctl reload apache2
+```
+
+### Add the certificate
+
+```bash
+sudo apt install -y certbot python3-certbot-apache
+sudo certbot --apache -d tesseract.cubesmart.com
+```
+
+Certbot writes `tesseract-le-ssl.conf`, adds the HTTP→HTTPS redirect, and
+installs a renewal timer. **One thing it does not do:** the new TLS virtual
+host is a copy, so re-check that `RequestHeader set X-Forwarded-Proto` reads
+`"https"` in it. If it still says `http`, invite links and redirects come out
+as insecure URLs:
+
+```bash
+sudo nano /etc/apache2/sites-available/tesseract-le-ssl.conf
+# RequestHeader set X-Forwarded-Proto "https"
+sudo systemctl reload apache2
+```
+
+### Close the app port
+
+Apache should be the only way in:
+
+```bash
+sudo ufw allow OpenSSH
+sudo ufw allow 'Apache Full'
+sudo ufw enable
+```
+
+`Apache Full` opens 80 and 443. Port 3005 is then reachable only from the machine itself.
+
+---

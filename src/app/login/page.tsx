@@ -44,8 +44,9 @@ function LoginForm() {
       body: JSON.stringify({ email, password }),
     });
     setBusy(false);
-    if (res.ok) router.push("/");
-    else setError((await res.json()).error ?? "Sign-in failed");
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) router.push(data.mustChangePassword ? "/change-password" : "/");
+    else setError(data.error ?? "Sign-in failed");
   };
 
   return (

@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS users (
   role TEXT NOT NULL DEFAULT 'member',
   status TEXT NOT NULL DEFAULT 'active',
   auth_provider TEXT NOT NULL DEFAULT 'password',
+  must_change_password INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS invites (
@@ -258,6 +259,9 @@ export function getDb(): Database.Database {
     "ALTER TABLE resources ADD COLUMN next_sync_at TEXT",
     "ALTER TABLE documents ADD COLUMN content_hash TEXT",
     "ALTER TABLE messages ADD COLUMN meta TEXT NOT NULL DEFAULT '{}'",
+    // Seeded and admin-reset passwords are handed over in plaintext, so the
+    // owner is made to replace them before they can use the app.
+    "ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0",
     // Multi-tenancy
     "ALTER TABLE users ADD COLUMN org_id TEXT",
     "ALTER TABLE invites ADD COLUMN org_id TEXT",

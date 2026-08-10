@@ -8,7 +8,7 @@ export async function GET() {
     const db = getDb();
     const users = db
       .prepare(
-        "SELECT id, email, name, role, status, auth_provider, created_at FROM users WHERE org_id = ? ORDER BY created_at"
+        "SELECT id, email, name, role, status, auth_provider, must_change_password, created_at FROM users WHERE org_id = ? ORDER BY created_at"
       )
       .all(admin.orgId);
     const invites = db

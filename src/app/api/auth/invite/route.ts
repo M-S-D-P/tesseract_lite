@@ -50,6 +50,8 @@ export async function POST(request: Request) {
     email: invite.email,
     name: name ?? null,
     role: invite.role as "admin" | "member",
+    // They just chose this password themselves.
+    mustChangePassword: false,
     orgId: invite.org_id,
   });
   return Response.json({ ok: true });

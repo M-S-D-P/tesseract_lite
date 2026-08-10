@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import {
   Activity,
+  KeyRound,
   Layers,
   LogOut,
   MessageSquare,
@@ -31,6 +32,9 @@ export default function TopBar({ center }: { center?: React.ReactNode }) {
     fetch("/api/auth/me").then(async (r) => {
       if (!r.ok) return router.push("/login");
       const d = await r.json();
+      // An account still on its handed-over password can do nothing else —
+      // every other API refuses it, so send them straight there.
+      if (d.mustChangePassword) return router.push("/change-password");
       setMe(d.user);
       setOrgName(d.org?.name ?? "");
     });
@@ -82,6 +86,7 @@ export default function TopBar({ center }: { center?: React.ReactNode }) {
             {resolvedTheme === "dark" ? <SunMedium className="size-4" /> : <Moon className="size-4" />}
           </button>
         )}
+        {navItem("/change-password", <KeyRound className="size-4" />, "Change password")}
         <button
           onClick={async () => {
             await fetch("/api/auth/logout", { method: "POST" });

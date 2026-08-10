@@ -22,7 +22,14 @@ export async function POST(request: Request) {
   db.prepare(
     "INSERT INTO users (id, org_id, email, name, password_hash, role) VALUES (?, ?, ?, ?, ?, 'admin')"
   ).run(id, orgId, String(email).trim(), name ?? null, await hashPassword(password));
-  await setSessionCookie({ id, email, name: name ?? null, role: "admin", orgId });
+  await setSessionCookie({
+    id,
+    email,
+    name: name ?? null,
+    role: "admin",
+    orgId,
+    mustChangePassword: false,
+  });
   return Response.json({ ok: true });
 }
 

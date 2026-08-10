@@ -18,6 +18,10 @@ export type SessionUser = {
   name: string | null;
   role: "admin" | "member";
   orgId: string;
+  // Set on seeded and admin-reset accounts. Read from the database on every
+  // request, not from the token, so an admin reset takes effect immediately
+  // on a session that is already signed in.
+  mustChangePassword: boolean;
 };
 
 export async function hashPassword(pw: string) {
@@ -70,6 +74,7 @@ export async function verifySessionToken(
       name: (payload.name as string) ?? null,
       role: payload.role as "admin" | "member",
       orgId: (payload.orgId as string) ?? "",
+      mustChangePassword: false, // authoritative value comes from getSession
     };
   } catch {
     return null;
@@ -85,7 +90,9 @@ export async function getSession(): Promise<SessionUser | null> {
   // Confirm the user still exists and is active; org comes from the DB, not
   // the token, so org migrations take effect immediately.
   const row = getDb()
-    .prepare("SELECT id, email, name, role, status, org_id FROM users WHERE id = ?")
+    .prepare(
+      "SELECT id, email, name, role, status, org_id, must_change_password FROM users WHERE id = ?"
+    )
     .get(session.id) as
     | {
         id: string;
@@ -94,6 +101,7 @@ export async function getSession(): Promise<SessionUser | null> {
         role: string;
         status: string;
         org_id: string | null;
+        must_change_password: number;
       }
     | undefined;
   if (!row || row.status !== "active" || !row.org_id) return null;
@@ -103,6 +111,7 @@ export async function getSession(): Promise<SessionUser | null> {
     name: row.name,
     role: row.role as "admin" | "member",
     orgId: row.org_id,
+    mustChangePassword: row.must_change_password === 1,
   };
 }
 
@@ -135,9 +144,17 @@ export class HttpError extends Error {
   }
 }
 
-export async function requireUser(): Promise<SessionUser> {
+// `allowPendingPassword` is for the change-password endpoint itself, which is
+// the one thing an account with a handed-over password may still do. Every
+// other route refuses until the owner has replaced it.
+export async function requireUser(
+  opts: { allowPendingPassword?: boolean } = {}
+): Promise<SessionUser> {
   const s = await getSession();
   if (!s) throw new HttpError(401, "Not authenticated");
+  if (s.mustChangePassword && !opts.allowPendingPassword) {
+    throw new HttpError(403, "Set a new password before continuing");
+  }
   return s;
 }
 

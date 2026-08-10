@@ -94,10 +94,15 @@ CREATE TABLE IF NOT EXISTS users (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 `);
-try {
-  db.exec("ALTER TABLE users ADD COLUMN org_id TEXT");
-} catch {
-  // already present
+for (const stmt of [
+  "ALTER TABLE users ADD COLUMN org_id TEXT",
+  "ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0",
+]) {
+  try {
+    db.exec(stmt);
+  } catch {
+    // already present
+  }
 }
 
 let org = db.prepare("SELECT id, name FROM orgs WHERE name = ?").get(ORG_NAME);
@@ -119,9 +124,11 @@ if (!org) {
 }
 
 const findUser = db.prepare("SELECT id, role FROM users WHERE email = ?");
+// must_change_password = 1: these passwords are printed and handed over, so
+// the owner is made to replace them before the account can be used.
 const insertUser = db.prepare(
-  `INSERT INTO users (id, org_id, email, name, password_hash, role, status)
-   VALUES (?, ?, ?, ?, ?, ?, 'active')`
+  `INSERT INTO users (id, org_id, email, name, password_hash, role, status, must_change_password)
+   VALUES (?, ?, ?, ?, ?, ?, 'active', 1)`
 );
 const promote = db.prepare("UPDATE users SET role = 'admin', org_id = ? WHERE id = ?");
 
@@ -160,6 +167,7 @@ if (created.length > 0) {
     `Generated ${new Date().toISOString()}`,
     "",
     "Distribute these to their owners, then DELETE this file.",
+    "Each account must choose its own password on first sign-in.",
     "",
     ...created.map((u) => `${u.role.padEnd(6)}  ${u.email.padEnd(32)}  ${u.password}`),
     "",

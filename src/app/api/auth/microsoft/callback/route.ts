@@ -59,7 +59,8 @@ export async function GET(request: Request) {
 
   if (user) {
     if (user.status !== "active") return fail("Account is deactivated");
-    await setSessionCookie({ ...user, orgId: user.org_id });
+    // SSO accounts have no local password, so there is nothing to force.
+    await setSessionCookie({ ...user, orgId: user.org_id, mustChangePassword: false });
     return Response.redirect(appUrl);
   }
 
@@ -80,6 +81,7 @@ export async function GET(request: Request) {
     email,
     name: payload.name ?? null,
     role: invite.role as "admin" | "member",
+    mustChangePassword: false,
     orgId: invite.org_id,
   });
   return Response.redirect(appUrl);

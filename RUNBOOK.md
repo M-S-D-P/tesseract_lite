@@ -11,7 +11,9 @@ For whoever administers the instance. Installation is in
 |---|---|---|
 | Chat, facet scoping, file downloads | yes | yes |
 | Add / sync / delete content | yes | yes |
+| Change their own password | yes | yes |
 | Pipeline, Tuning, Admin | no — hidden, and blocked by URL | yes |
+| Reset another person's password | no | yes |
 
 Administrator is a per-account flag, not a separate login. Grant it in
 **Admin → Users & invites**.
@@ -155,11 +157,26 @@ In-flight answers are lost; queued ingestion jobs resume on their own.
 
 Edit `.env.local`, then restart. Indexed content is unaffected.
 
-### Reset someone's password
+### Passwords
 
-There is no self-service password reset in this build. Delete the account in
-**Admin → Users & invites** and re-invite them, or add their address to
-`scripts/seed.mjs` and re-run the seed to generate a fresh password.
+**Someone wants to change their own:** the key icon in the top bar, or
+`/change-password` directly. They need their current one. Minimum ten
+characters.
+
+**Someone is locked out:** **Admin → Users & invites → Reset password** next
+to their name. A temporary password appears on screen once — it is not stored
+in readable form anywhere, so if you lose it, issue another. Read it to them
+over a channel you trust; their old password stops working immediately.
+
+Accounts holding a password they did not choose — everyone straight after
+`npm run seed`, and anyone you have just reset — are marked **password not set
+yet** in the user list. Those accounts can sign in and do exactly one thing:
+set their own password. Every other page and API returns 403 until they do.
+
+**Someone forgot theirs and no administrator is available:** there is no email
+reset, because the server has no mail configuration. An admin has to issue a
+temporary password. If you want self-service email reset, that needs SMTP
+credentials and is a change to the build.
 
 ### Free up disk
 

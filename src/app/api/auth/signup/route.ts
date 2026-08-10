@@ -45,6 +45,7 @@ export async function POST(request: Request) {
     name: name ?? null,
     role: "admin",
     orgId,
+    mustChangePassword: false,
   });
   return Response.json({ ok: true });
 }
