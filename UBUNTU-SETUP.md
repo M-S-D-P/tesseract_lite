@@ -4,7 +4,7 @@ Written for Ubuntu 22.04 LTS and 24.04 LTS. Every command is run as a user
 with `sudo`. Total time: about 20 minutes, most of it waiting on `npm ci`.
 
 The result: the app running under systemd as a dedicated service account,
-behind nginx with HTTPS, starting automatically on reboot.
+behind Apache with HTTPS, starting automatically on reboot.
 
 ---
 
@@ -19,6 +19,10 @@ behind nginx with HTTPS, starting automatically on reboot.
 
 Disk: 20 GB is plenty for the app and a few large repositories. Indexing a
 very large codebase is the main consumer.
+
+You do **not** need a database server — see step 3. PostgreSQL with pgvector
+is supported as an alternative vector store and is covered in step 4, but it
+is entirely optional.
 
 ---
 
@@ -45,7 +49,191 @@ native module during install and fails without a C++ toolchain.
 
 ---
 
-## 3. Create the service account and directory
+## 3. The database
+
+**There is nothing to install, and no database server to run.** This trips
+people up, so it is worth being explicit.
+
+Tesseract Lite stores everything — accounts, chats, documents, and the vector
+index used for search — in a single SQLite file at
+`/opt/tesseract/app/data/tesseract.db`. SQLite is a library, not a service:
+no daemon, no listening port, no user accounts, no `CREATE DATABASE`. The file
+is created automatically the first time the app or the seed script runs.
+
+Two pieces do the work, and both arrive with `npm ci` in step 8:
+
+| Package | What it is | Installed by |
+|---|---|---|
+| `better-sqlite3` | SQLite itself, compiled against your Node | `npm ci` (needs the toolchain from step 2) |
+| `sqlite-vec` | vector-search extension, loaded into SQLite at startup | `npm ci` — ships a prebuilt binary |
+
+So the only OS-level requirement for the database is the compiler toolchain
+you already installed. Do **not** `apt install sqlite3` expecting the app to
+use it — that is a separate command-line client, and the app ignores it.
+
+### Optional: the sqlite3 CLI for inspection
+
+Useful for backups and spot checks. It does not affect the running app:
+
+```bash
+sudo apt install -y sqlite3
+```
+
+Then, for example:
+
+```bash
+sudo -u tesseract sqlite3 /opt/tesseract/app/data/tesseract.db \
+  "SELECT email, role FROM users ORDER BY role;"
+
+sudo -u tesseract sqlite3 /opt/tesseract/app/data/tesseract.db \
+  "SELECT COUNT(*) AS chunks FROM chunks;"
+```
+
+### What lives where
+
+```
+/opt/tesseract/app/data/
+├── tesseract.db          the database
+├── tesseract.db-wal      write-ahead log  ── part of the database,
+├── tesseract.db-shm      shared memory    ── never copy the .db alone
+├── uploads/              original files, kept so a re-index needs no re-upload
+└── repos/                working clones of indexed Git repositories
+```
+
+The app runs SQLite in WAL mode, which is why `-wal` and `-shm` appear
+alongside the database. Copying only `tesseract.db` from a running instance
+gives you a torn backup — use the `.backup` command shown in the Backups
+section, which is safe while the service is live.
+
+### Sizing and permissions
+
+Budget roughly 3–4× the raw size of what you index: the text is stored once as
+chunks and once again as vectors, plus the original in `uploads/`. A few large
+repositories land in the low hundreds of MB.
+
+The whole directory must be owned by the service account:
+
+```bash
+sudo chown -R tesseract:tesseract /opt/tesseract/app/data
+```
+
+A `SQLITE_READONLY` or `attempt to write a readonly database` error in the
+logs almost always means something was run as `root` and left a file behind
+with the wrong owner. The fix is the `chown` above.
+
+---
+
+## 4. Optional: PostgreSQL + pgvector
+
+Skip this section unless you want it — sqlite-vec from step 3 is a complete,
+working index on its own, and nothing below is needed to get the app running.
+
+Use pgvector when the corpus gets large (roughly past a few hundred thousand
+chunks), when several ingestions run concurrently and SQLite's single-writer
+lock starts to bite, or when your DBAs want the vectors in a database they
+already back up and monitor.
+
+The app picks the backend from one environment variable. Set `PGVECTOR_URL`
+and it uses Postgres; leave it unset and it uses sqlite-vec. Document and
+account metadata stays in SQLite either way — Postgres holds only chunks and
+embeddings.
+
+### Install PostgreSQL 16 and the extension
+
+```bash
+sudo apt install -y postgresql postgresql-contrib postgresql-16-pgvector
+sudo systemctl enable --now postgresql
+psql --version
+```
+
+If `postgresql-16-pgvector` is not found, your release predates it. Add the
+official PostgreSQL repository and retry:
+
+```bash
+sudo apt install -y curl ca-certificates
+sudo install -d /usr/share/postgresql-common/pgdg
+sudo curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+  --fail https://www.postgresql.org/media/keys/ACCC4CF8.asc
+echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] \
+https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+  | sudo tee /etc/apt/sources.list.d/pgdg.list
+sudo apt update
+sudo apt install -y postgresql-16 postgresql-16-pgvector
+```
+
+### Create the database and role
+
+Use a real password, not the one below:
+
+```bash
+sudo -u postgres psql <<'SQL'
+CREATE ROLE tesseract WITH LOGIN PASSWORD 'CHANGE_ME_TO_SOMETHING_RANDOM';
+CREATE DATABASE tesseract OWNER tesseract;
+SQL
+
+sudo -u postgres psql -d tesseract -c "CREATE EXTENSION IF NOT EXISTS vector;"
+```
+
+The extension has to be created by a superuser, which is why that last line is
+separate. The app creates its own table and indexes on first use.
+
+Confirm the extension is live:
+
+```bash
+sudo -u postgres psql -d tesseract -c "\dx vector"
+```
+
+### Point the app at it
+
+Add to `/opt/tesseract/app/.env.local` (created in step 7 below — come back
+here once it exists):
+
+```ini
+PGVECTOR_URL=postgresql://tesseract:CHANGE_ME_TO_SOMETHING_RANDOM@localhost:5432/tesseract
+```
+
+Restart the service afterwards. On the next ingestion or search the app
+creates the `chunks` table, and — if a sqlite-vec index already exists and was
+built by the same embedder — copies those vectors straight across. That
+migration costs no re-embedding and logs `pgvector: migrating N chunks…`. If
+the widths differ (because the embedding provider changed) it says so and
+leaves the table empty for you to re-sync.
+
+Keep the database local. If you must reach it across a network, require TLS
+and add `?sslmode=require` to the URL.
+
+### Which backend am I on?
+
+**Admin → Tuning** shows the live store as `sqlite-vec` or `pgvector`, with
+the vector width beside it. From the shell:
+
+```bash
+sudo -u tesseract psql "$PGVECTOR_URL" -c "SELECT COUNT(*) FROM chunks;"
+```
+
+### Backing it up
+
+pgvector data is **not** covered by the `data/` backup in the Backups section —
+that only holds SQLite, uploads and clones. Add a dump:
+
+```bash
+sudo -u postgres pg_dump -Fc tesseract \
+  -f /opt/tesseract/backups/tesseract-pg-$(date +%F).dump
+```
+
+Restore with `pg_restore -d tesseract`. Strictly speaking the vectors are
+reproducible by re-syncing every facet, but on a large corpus that is hours of
+embedding — back it up.
+
+### Going back to sqlite-vec
+
+Remove `PGVECTOR_URL` and restart. The SQLite index is still there, though it
+will be stale for anything ingested while Postgres was in charge — re-sync
+those facets.
+
+---
+
+## 5. Create the service account and directory
 
 Running a web app as `root` or as a person's login is a bad habit. Give it its
 own unprivileged account:
@@ -56,7 +244,7 @@ sudo useradd --system --create-home --home-dir /opt/tesseract --shell /usr/sbin/
 
 ---
 
-## 4. Get the code
+## 6. Get the code
 
 ```bash
 sudo -u tesseract git clone https://github.com/M-S-D-P/tesseract_lite.git /opt/tesseract/app
@@ -71,7 +259,7 @@ sudo -u tesseract git clone https://<TOKEN>@github.com/M-S-D-P/tesseract_lite.gi
 
 ---
 
-## 5. Configure
+## 7. Configure
 
 ```bash
 sudo -u tesseract cp .env.example .env.local
@@ -100,7 +288,7 @@ signs everyone out.
 
 ---
 
-## 6. Install and build
+## 8. Install and build
 
 ```bash
 cd /opt/tesseract/app
@@ -113,7 +301,7 @@ route table when it succeeds.
 
 ---
 
-## 7. Create the accounts
+## 9. Create the accounts
 
 ```bash
 sudo -u tesseract npm run seed
@@ -135,7 +323,7 @@ never changes an existing password.
 
 ---
 
-## 8. Run it under systemd
+## 10. Run it under systemd
 
 ```bash
 sudo nano /etc/systemd/system/tesseract.service
@@ -184,66 +372,109 @@ curl -I http://localhost:3002/login     # expect HTTP/1.1 200 OK
 
 ---
 
-## 9. Put nginx in front with HTTPS
+## 11. Put Apache in front with HTTPS
+
+### Install and enable the modules
 
 ```bash
-sudo apt install -y nginx
-sudo nano /etc/nginx/sites-available/tesseract
+sudo apt install -y apache2
+sudo a2enmod proxy proxy_http headers ssl rewrite
+sudo systemctl restart apache2
 ```
 
-```nginx
-server {
-    listen 80;
-    server_name tesseract.cubesmart.com;
+`proxy` and `proxy_http` do the reverse proxying, `headers` sets
+`X-Forwarded-Proto` so the app builds correct links, and `ssl` is needed
+before certbot can install a certificate.
 
-    # Repository and folder uploads are large; the default 1 MB will reject them.
-    client_max_body_size 512M;
-
-    location / {
-        proxy_pass         http://127.0.0.1:3002;
-        proxy_http_version 1.1;
-        proxy_set_header   Host              $host;
-        proxy_set_header   X-Real-IP         $remote_addr;
-        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
-        proxy_set_header   X-Forwarded-Proto $scheme;
-
-        # Answers stream token by token — buffering makes them arrive all at
-        # once after a long pause, and long ingestions look like timeouts.
-        proxy_buffering    off;
-        proxy_read_timeout 600s;
-    }
-}
-```
+### The virtual host
 
 ```bash
-sudo ln -s /etc/nginx/sites-available/tesseract /etc/nginx/sites-enabled/
-sudo rm -f /etc/nginx/sites-enabled/default
-sudo nginx -t && sudo systemctl reload nginx
+sudo nano /etc/apache2/sites-available/tesseract.conf
 ```
 
-Add the certificate:
+```apache
+<VirtualHost *:80>
+    ServerName tesseract.cubesmart.com
+
+    # Repository and folder uploads are large. Apache's default is unlimited,
+    # but set it explicitly so the limit is a decision, not an accident.
+    LimitRequestBody 536870912
+
+    ProxyPreserveHost On
+    RequestHeader set X-Forwarded-Proto "http"
+
+    # flushpackets=on forwards each chunk as it arrives instead of buffering
+    # the response. Answers stream token by token, so without it they land in
+    # one lump after a long silence.
+    ProxyPass        / http://127.0.0.1:3002/ flushpackets=on timeout=600
+    ProxyPassReverse / http://127.0.0.1:3002/
+
+    # Compression buffers the stream and defeats the above.
+    SetEnv no-gzip 1
+    <Location />
+        SetEnvIfNoCase Content-Type text/event-stream no-gzip=1
+    </Location>
+
+    ErrorLog  ${APACHE_LOG_DIR}/tesseract-error.log
+    CustomLog ${APACHE_LOG_DIR}/tesseract-access.log combined
+</VirtualHost>
+```
+
+Long ingestions and long answers both outlive Apache's 60-second default, so
+raise the proxy timeout globally too:
 
 ```bash
-sudo apt install -y certbot python3-certbot-nginx
-sudo certbot --nginx -d tesseract.cubesmart.com
+echo "ProxyTimeout 600" | sudo tee /etc/apache2/conf-available/tesseract-timeout.conf
+sudo a2enconf tesseract-timeout
 ```
 
-Certbot rewrites the config for TLS and installs a renewal timer.
+Enable the site and drop the Ubuntu placeholder:
 
-Finally, close the app port to the outside world so nginx is the only way in:
+```bash
+sudo a2ensite tesseract
+sudo a2dissite 000-default
+sudo apache2ctl configtest        # expect: Syntax OK
+sudo systemctl reload apache2
+```
+
+### Add the certificate
+
+```bash
+sudo apt install -y certbot python3-certbot-apache
+sudo certbot --apache -d tesseract.cubesmart.com
+```
+
+Certbot writes `tesseract-le-ssl.conf`, adds the HTTP→HTTPS redirect, and
+installs a renewal timer. **One thing it does not do:** the new TLS virtual
+host is a copy, so re-check that `RequestHeader set X-Forwarded-Proto` reads
+`"https"` in it. If it still says `http`, invite links and redirects come out
+as insecure URLs:
+
+```bash
+sudo nano /etc/apache2/sites-available/tesseract-le-ssl.conf
+# RequestHeader set X-Forwarded-Proto "https"
+sudo systemctl reload apache2
+```
+
+### Close the app port
+
+Apache should be the only way in:
 
 ```bash
 sudo ufw allow OpenSSH
-sudo ufw allow 'Nginx Full'
+sudo ufw allow 'Apache Full'
 sudo ufw enable
 ```
 
+`Apache Full` opens 80 and 443. Port 3002 stays bound to localhost and is
+never exposed.
+
 ---
 
-## 10. First login
+## 12. First login
 
 Open `https://tesseract.cubesmart.com` and sign in as
-`smallela@cubesmart.com` with the password from step 7.
+`smallela@cubesmart.com` with the password from step 9.
 
 Then, as administrator:
 
@@ -286,6 +517,9 @@ sudo -u tesseract sqlite3 /opt/tesseract/app/data/tesseract.db \
 A nightly cron entry that keeps 14 days is enough. `.env.local` should be
 backed up separately, somewhere access-controlled — it holds your API key.
 
+If you enabled pgvector (step 4), that database is **not** covered by the
+above — add the `pg_dump` from that section to the same nightly job.
+
 ---
 
 ## When something goes wrong
@@ -306,8 +540,21 @@ Expected. The local embedding model loads on first use and is then cached in
 memory. Set `TRANSFORMERS_CACHE` to a path outside `node_modules` so `npm ci`
 does not force a re-download on every upgrade.
 
-**Uploads fail at around 1 MB**
-`client_max_body_size` is missing from the nginx config — see step 9.
+**Large uploads are rejected**
+`LimitRequestBody` in the Apache virtual host is too low — see step 11.
 
 **Answers arrive in one lump after a long wait**
-`proxy_buffering off;` is missing from the nginx config.
+`flushpackets=on` is missing from the `ProxyPass` line, or compression is
+re-enabled and buffering the stream. Both are in step 11.
+
+**Requests die at exactly 60 seconds**
+Apache's default `ProxyTimeout`. Set it to 600 as shown in step 11 — long
+ingestions and long answers both exceed a minute.
+
+**Invite links come out as http:// on an https:// site**
+Certbot's generated `tesseract-le-ssl.conf` still carries
+`RequestHeader set X-Forwarded-Proto "http"`. Change it to `https` and reload.
+
+**502 Proxy Error from Apache**
+The app is not running or not listening on 3002.
+`sudo systemctl status tesseract`, then `sudo journalctl -u tesseract -n 50`.

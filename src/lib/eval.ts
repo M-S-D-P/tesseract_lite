@@ -15,7 +15,7 @@ import { answerWithoutTools } from "./chat/providers";
 // so two runs are directly comparable.
 
 export type EvalConfig = {
-  backend: "local";
+  backend: "sqlite-vec" | "pgvector";
   model: string;
   judgeModel: string;
   embeddingModel: string;
@@ -28,7 +28,7 @@ export type EvalConfig = {
 export function currentConfig(orgId: string): EvalConfig {
   const embedding = embeddingConfig(orgId);
   return {
-    backend: "local",
+    backend: process.env.PGVECTOR_URL ? "pgvector" : "sqlite-vec",
     model: getSetting(orgId, "model_medium"),
     judgeModel: getSetting(orgId, "eval_judge_model") || getSetting(orgId, "model_medium"),
     embeddingModel: `${embedding.provider}:${embedding.model}`,
@@ -77,6 +77,19 @@ function parseJson(text: string): Record<string, unknown> | null {
 type SampledChunk = { content: string; documentId: string };
 
 async function sampleChunks(orgId: string, n: number): Promise<SampledChunk[]> {
+  if (process.env.PGVECTOR_URL) {
+    const { getPool } = await import("./rag/local-pg");
+    const { rows } = await getPool().query(
+      `SELECT content, document_id FROM chunks
+       WHERE org_id = $1 AND thread_id IS NULL AND length(content) > 400
+       ORDER BY random() LIMIT $2`,
+      [orgId, n]
+    );
+    return rows.map((r: { content: string; document_id: string }) => ({
+      content: r.content,
+      documentId: r.document_id,
+    }));
+  }
   const rows = getDb()
     .prepare(
       `SELECT c.content, c.document_id FROM chunks c

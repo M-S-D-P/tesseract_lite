@@ -53,6 +53,27 @@ indexed content is owned by the organization and stays.
 
 ---
 
+## Where the data lives
+
+Everything is under `/opt/tesseract/app/data` — the SQLite database, uploaded
+originals, and cloned repositories. There is no database server to run unless
+you chose pgvector.
+
+**Which vector store is active** is shown in **Admin → Tuning** as `sqlite-vec`
+or `pgvector`, with the vector width beside it. It is chosen by the
+`PGVECTOR_URL` variable in `.env.local`, not in the UI: unset means the
+embedded index, set means PostgreSQL. Changing it needs a service restart.
+
+Switching from sqlite-vec to pgvector copies existing vectors across on first
+use, with no re-embedding, provided both were built by the same embedder. The
+log line to look for is `pgvector: migrating N chunks…`.
+
+If you run pgvector, remember it needs its own backup — the `data/` directory
+no longer holds your vectors. See the Backups section of
+[UBUNTU-SETUP.md](UBUNTU-SETUP.md).
+
+---
+
 ## The two settings that actually matter
 
 ### Model per reasoning tier — Admin → Settings
@@ -167,6 +188,11 @@ valid.
 **Retrieval quality is poor on a big codebase**
 In order: raise Top-K to 12–16; if that is not enough, consider switching the
 embedding provider to OpenAI — but read the re-index warning above first.
+
+**Ingestion is slow, or times out, when several syncs overlap**
+SQLite allows one writer at a time, so concurrent ingestions queue behind each
+other. Either stagger the sync schedules, or move the vector store to pgvector
+(step 4 of the setup guide), which handles concurrent writes properly.
 
 **A member can reach an admin page**
 They shouldn't be able to. Confirm their role in **Admin → Users & invites**;

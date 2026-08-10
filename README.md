@@ -46,6 +46,13 @@ npm run dev                    # http://localhost:3002
 - An Anthropic API key with credit available
 - ~2 GB disk for the app, plus room for whatever you index
 
-No database server, no Docker, no second cloud vendor. Embeddings run on the
-machine by default; OpenAI is an optional alternative you can switch on in
-Admin if you want its retrieval quality and have a key.
+Out of the box: no database server, no Docker, no second cloud vendor. Two
+things are swappable if you want them.
+
+- **Vector store** — the embedded sqlite-vec index by default. Set
+  `PGVECTOR_URL` to use PostgreSQL + pgvector instead, which is worth doing
+  once the corpus gets large or your DBAs want the vectors somewhere they
+  already back up. Existing vectors migrate across without re-embedding.
+- **Embeddings** — a model that runs on the server by default, needing no
+  second vendor key. Switch to OpenAI in Admin if you want its retrieval
+  quality and have a key.

@@ -104,7 +104,7 @@ export async function ingestDocument(opts: {
   let localOk = false;
   try {
     // Re-sync path: clear any partial chunks before re-indexing.
-    if (opts.existingDocumentId) await deleteDocumentLocally(documentId);
+    if (opts.existingDocumentId) await deleteDocumentLocally(orgId, documentId);
     const text =
       effectiveText ?? (await extractText(opts.buffer, opts.name, opts.mime));
     if (!text.trim()) throw new Error("no extractable text");
@@ -148,7 +148,7 @@ export async function deleteDocument(documentId: string) {
       }
     | undefined;
   if (!doc) return;
-  await deleteDocumentLocally(documentId);
+  await deleteDocumentLocally(doc.org_id, documentId);
   if (doc.stored_path) {
     fs.rmSync(path.join(UPLOADS_DIR, doc.stored_path), { force: true });
   }

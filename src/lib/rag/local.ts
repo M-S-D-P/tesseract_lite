@@ -60,6 +60,7 @@ function splitBundleSections(text: string): { path: string | null; text: string 
   return sections;
 }
 
+// Dispatch: pgvector when PGVECTOR_URL is set, embedded sqlite-vec otherwise.
 export async function indexDocumentLocally(opts: {
   orgId: string;
   documentId: string;
@@ -68,6 +69,10 @@ export async function indexDocumentLocally(opts: {
   text: string;
   meta?: Record<string, unknown>;
 }) {
+  if (process.env.PGVECTOR_URL) {
+    const { pgIndexDocument } = await import("./local-pg");
+    return pgIndexDocument(opts);
+  }
   return sqliteIndexDocument(opts);
 }
 
@@ -115,7 +120,13 @@ async function sqliteIndexDocument(opts: {
   return chunks.length;
 }
 
-export async function deleteDocumentLocally(documentId: string) {
+export async function deleteDocumentLocally(orgId: string, documentId: string) {
+  if (process.env.PGVECTOR_URL) {
+    const { pgDeleteDocument } = await import("./local-pg");
+    await pgDeleteDocument(orgId, documentId);
+  }
+  // Always clear the SQLite side too: it may still hold chunks from before
+  // pgvector was switched on.
   sqliteDeleteDocument(documentId);
 }
 
@@ -137,6 +148,10 @@ export async function hasLocalChunks(
   orgId: string,
   threadId: string
 ): Promise<boolean> {
+  if (process.env.PGVECTOR_URL) {
+    const { pgHasChunks } = await import("./local-pg");
+    return pgHasChunks(orgId, threadId);
+  }
   const row = getDb()
     .prepare(
       "SELECT 1 FROM chunks c JOIN documents d ON d.id = c.document_id WHERE d.org_id = ? AND (c.thread_id IS NULL OR c.thread_id = ?) LIMIT 1"
@@ -163,6 +178,10 @@ export async function searchLocal(
   query: string,
   opts: { threadId?: string | null; k?: number; resourceIds?: string[] } = {}
 ): Promise<LocalSearchResult[]> {
+  if (process.env.PGVECTOR_URL) {
+    const { pgSearch } = await import("./local-pg");
+    return pgSearch(orgId, query, opts);
+  }
   return sqliteSearch(orgId, query, opts);
 }
 
