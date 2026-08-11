@@ -4,9 +4,8 @@
 //   npm run seed
 //
 // Idempotent: re-running adds only what is missing and never touches an
-// existing user's password. Generated passwords are written once to
-// data/seed-credentials.txt (mode 0600) and printed to stdout — distribute
-// them, then delete the file.
+// existing user's password. Every new account starts on one shared password
+// (see SEED_PASSWORD below) and must replace it on first sign-in.
 //
 // Safe to run before the app has ever started: the tables it needs are
 // created here with the same definitions the app uses (CREATE TABLE IF NOT
@@ -50,14 +49,17 @@ const DATA_DIR = path.join(process.cwd(), "data");
 const DB_PATH = path.join(DATA_DIR, "tesseract.db");
 const CREDS_PATH = path.join(DATA_DIR, "seed-credentials.txt");
 
-// Ambiguity-free alphabet: no O/0, l/1/I. These get typed by hand.
-const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
-function tempPassword(length = 16) {
-  const bytes = crypto.randomBytes(length);
-  let out = "";
-  for (let i = 0; i < length; i++) out += ALPHABET[bytes[i] % ALPHABET.length];
-  return out;
-}
+// One shared starting password for every seeded account, so rollout is a
+// single sentence to fifteen people instead of fifteen separate handovers.
+// Every account must replace it on first sign-in, which is what keeps a
+// shared, guessable starter acceptable — until then the account can do
+// nothing else.
+//
+// Override with SEED_PASSWORD. Set SEED_FORCE_PASSWORD_CHANGE=false to skip
+// the forced change (not recommended: the password is in this file, and
+// therefore in the repository).
+const SEED_PASSWORD = process.env.SEED_PASSWORD || "cs2026x";
+const FORCE_CHANGE = process.env.SEED_FORCE_PASSWORD_CHANGE !== "false";
 
 function nameFromEmail(email) {
   // "RKeeley@cubesmart.com" → "R Keeley"; best-effort, editable in Admin.
@@ -124,13 +126,16 @@ if (!org) {
 }
 
 const findUser = db.prepare("SELECT id, role FROM users WHERE email = ?");
-// must_change_password = 1: these passwords are printed and handed over, so
-// the owner is made to replace them before the account can be used.
+// must_change_password: the starting password is shared and lives in this
+// file, so the owner is made to replace it before the account can be used.
 const insertUser = db.prepare(
   `INSERT INTO users (id, org_id, email, name, password_hash, role, status, must_change_password)
-   VALUES (?, ?, ?, ?, ?, ?, 'active', 1)`
+   VALUES (?, ?, ?, ?, ?, ?, 'active', ?)`
 );
 const promote = db.prepare("UPDATE users SET role = 'admin', org_id = ? WHERE id = ?");
+
+// Hashed once — bcrypt on sixteen accounts is otherwise the slowest part.
+const passwordHash = bcrypt.hashSync(SEED_PASSWORD, 10);
 
 const created = [];
 let skipped = 0;
@@ -146,16 +151,16 @@ function ensureUser(email, role) {
     }
     return;
   }
-  const password = tempPassword();
   insertUser.run(
     crypto.randomUUID(),
     org.id,
     email,
     role === "admin" ? ADMIN.name : nameFromEmail(email),
-    bcrypt.hashSync(password, 10),
-    role
+    passwordHash,
+    role,
+    FORCE_CHANGE ? 1 : 0
   );
-  created.push({ email, role, password });
+  created.push({ email, role });
 }
 
 ensureUser(ADMIN.email, "admin");
@@ -163,13 +168,15 @@ for (const email of MEMBERS) ensureUser(email, "member");
 
 if (created.length > 0) {
   const lines = [
-    `Tesseract Lite — seeded credentials for ${ORG_NAME}`,
+    `Tesseract Lite — seeded accounts for ${ORG_NAME}`,
     `Generated ${new Date().toISOString()}`,
     "",
-    "Distribute these to their owners, then DELETE this file.",
-    "Each account must choose its own password on first sign-in.",
+    `Starting password for every account below: ${SEED_PASSWORD}`,
+    FORCE_CHANGE
+      ? "Each account must choose its own password on first sign-in."
+      : "WARNING: the forced password change is disabled for this seed.",
     "",
-    ...created.map((u) => `${u.role.padEnd(6)}  ${u.email.padEnd(32)}  ${u.password}`),
+    ...created.map((u) => `${u.role.padEnd(6)}  ${u.email}`),
     "",
   ];
   fs.writeFileSync(CREDS_PATH, lines.join("\n"), { mode: 0o600 });
