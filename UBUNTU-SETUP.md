@@ -400,11 +400,29 @@ If your CA sends an intermediate chain, save it alongside and add
 sudo -u tesseract npm run seed
 ```
 
-This creates the **CubeSmart** organization, the administrator account, and
-the fifteen member accounts, then prints a password for each one and writes
-them to `data/seed-credentials.txt` (readable only by the service account).
+This creates the **CubeSmart** organization, the administrator account and the
+fifteen member accounts. Every one of them starts on the same password:
 
-**Copy those passwords out now, distribute them, and delete the file:**
+```
+cs2026x
+```
+
+So the rollout message is one sentence: *sign in at
+https://10.2.0.28:3005 with your work email and `cs2026x`, and pick your own
+password when it asks.*
+
+**That shared password is safe only because it cannot be used for anything
+else.** Signing in with it leads straight to a change-password screen, and
+every other page and API refuses the account until a new password is set. Ten
+characters minimum.
+
+Change it with `SEED_PASSWORD=something-else npm run seed`. Do not set
+`SEED_FORCE_PASSWORD_CHANGE=false` — without the forced change, a password
+that lives in a file in the repository becomes the real credential for
+sixteen accounts.
+
+The account list is written to `data/seed-credentials.txt` for your records.
+It holds no secrets now, but delete it once the rollout is done:
 
 ```bash
 sudo -u tesseract cat data/seed-credentials.txt
@@ -412,12 +430,8 @@ sudo -u tesseract rm data/seed-credentials.txt
 ```
 
 Re-running `npm run seed` later is safe: it adds only missing accounts and
-never changes an existing password.
-
-Each of these accounts is marked as still holding a handed-over password.
-Signing in with one leads straight to a change-password screen, and every
-other page and API refuses until a new password is set. So the passwords above
-only have to survive the trip to their owner.
+never touches an existing password. Someone who has already chosen their own
+password keeps it.
 
 ---
 
@@ -495,8 +509,9 @@ That is the whole deployment — carry on to step 11.
 
 ## 11. First login
 
-Open `https://tesseract.cubesmart.com` and sign in as
-`smallela@cubesmart.com` with the password from step 9.
+Open `https://10.2.0.28:3005` and sign in as `smallela@cubesmart.com` with
+`cs2026x`. You will be asked to choose your own password before anything else
+becomes available.
 
 Then, as administrator:
 

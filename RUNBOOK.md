@@ -67,9 +67,16 @@ worker runs inside the app process; nothing to schedule in cron.
 
 ### Add a person
 
-**Admin → Users & invites → Invite**, enter the email, send them the link.
-Or add them to `MEMBERS` in `scripts/seed.mjs` and re-run `npm run seed` — it
-creates only what is missing and prints the new password.
+**Admin → Users & invites → Invite**, enter the email, then copy the link and
+send it to them yourself — over Teams, Outlook, however you normally would.
+
+**There is no mail server, by design.** Nothing is emailed automatically and
+nothing is failing silently; the invite link is the whole mechanism. It is
+valid for seven days.
+
+Alternatively add them to `MEMBERS` in `scripts/seed.mjs` and re-run
+`npm run seed`. They get the same shared starting password as everyone else
+(`cs2026x` unless you changed it) and must replace it on first sign-in.
 
 ### Remove a person
 
@@ -214,7 +221,8 @@ characters.
 **Someone is locked out:** **Admin → Users & invites → Reset password** next
 to their name. A temporary password appears on screen once — it is not stored
 in readable form anywhere, so if you lose it, issue another. Read it to them
-over a channel you trust; their old password stops working immediately.
+over a channel you trust; their old password stops working immediately. Note
+this is a freshly generated password, not `cs2026x`.
 
 Accounts holding a password they did not choose — everyone straight after
 `npm run seed`, and anyone you have just reset — are marked **password not set
@@ -222,9 +230,9 @@ yet** in the user list. Those accounts can sign in and do exactly one thing:
 set their own password. Every other page and API returns 403 until they do.
 
 **Someone forgot theirs and no administrator is available:** there is no email
-reset, because the server has no mail configuration. An admin has to issue a
-temporary password. If you want self-service email reset, that needs SMTP
-credentials and is a change to the build.
+reset, because the server has no mail configuration and that was a deliberate
+choice. An administrator has to issue a temporary password. Adding self-service
+email reset would mean SMTP credentials and a change to the build.
 
 ### Free up disk
 
