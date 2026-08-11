@@ -453,6 +453,15 @@ function SettingsTab() {
     error?: string;
   } | null>(null);
   const [testingConfluence, setTestingConfluence] = useState(false);
+  const [githubTest, setGithubTest] = useState<{
+    configured: boolean;
+    connected?: boolean;
+    login?: string | null;
+    warning?: string | null;
+    error?: string;
+    message?: string;
+  } | null>(null);
+  const [testingGithub, setTestingGithub] = useState(false);
 
   const refreshModels = async () => {
     setRefreshing(true);
@@ -614,6 +623,67 @@ function SettingsTab() {
                   e.target.value
                 )
               }
+            />
+          </label>
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-border-app bg-surface p-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold">GitHub connector</h2>
+          <div className="flex items-center gap-2">
+            {githubTest && (
+              <span
+                className={`text-xs ${
+                  githubTest.connected
+                    ? githubTest.warning
+                      ? "text-amber-500"
+                      : "text-emerald-500"
+                    : "text-danger"
+                }`}
+              >
+                {githubTest.connected
+                  ? (githubTest.warning ?? `✓ connected as ${githubTest.login}`)
+                  : (githubTest.error ?? githubTest.message)}
+              </span>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={testingGithub}
+              onClick={async () => {
+                setTestingGithub(true);
+                setGithubTest(null);
+                // Save the field first so the test uses what is on screen.
+                await fetch("/api/admin/settings", {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ github_token: settings.github_token ?? "" }),
+                });
+                const r = await fetch("/api/github/status");
+                setGithubTest(await r.json());
+                setTestingGithub(false);
+              }}
+            >
+              {testingGithub ? "Testing…" : "Test connection"}
+            </Button>
+          </div>
+        </div>
+        <p className="mt-1 text-xs text-muted">
+          Only needed for <strong>private</strong> repositories — public ones
+          are cloned without a token. Use a classic personal access token with
+          the <code>repo</code> scope, or a fine-grained token with Contents:
+          Read on the repositories you want indexed. A <code>GITHUB_TOKEN</code>
+          in .env.local is used when this is left blank.
+        </p>
+        <div className="mt-3 flex flex-col gap-2">
+          <label className="flex items-center gap-3 text-sm">
+            <span className="w-28 text-muted">Access token</span>
+            <Input
+              type="password"
+              placeholder="github_pat_… or ghp_…"
+              value={settings.github_token ?? ""}
+              onChange={(e) => update("github_token", e.target.value)}
             />
           </label>
         </div>

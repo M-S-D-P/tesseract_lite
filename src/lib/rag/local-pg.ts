@@ -1,7 +1,13 @@
 import { Pool } from "pg";
 import { getChunkConfig, getNumSetting } from "../settings";
 import { getDb } from "../db";
-import { embedTexts, chunkText, type LocalSearchResult } from "./local";
+import {
+  embedTexts,
+  chunkText,
+  visibleResourceIds,
+  type LocalSearchResult,
+  type SearchOpts,
+} from "./local";
 import { embeddingConfig } from "./embeddings";
 import { recordMetric } from "../metrics";
 
@@ -244,11 +250,22 @@ export async function pgIndexDocument(opts: {
   return chunks.length;
 }
 
-export async function pgHasChunks(orgId: string, threadId: string): Promise<boolean> {
+export async function pgHasChunks(
+  orgId: string,
+  threadId: string,
+  userId: string
+): Promise<boolean> {
   await ensureSchema(orgId);
+  // Visibility lives in SQLite, so the allowed set is resolved there and
+  // passed in rather than joined.
+  const allowed = visibleResourceIds(orgId, userId);
   const { rows } = await pool().query(
-    "SELECT 1 FROM chunks WHERE org_id = $1 AND (thread_id IS NULL OR thread_id = $2) LIMIT 1",
-    [orgId, threadId]
+    `SELECT 1 FROM chunks
+     WHERE org_id = $1
+       AND (thread_id IS NULL OR thread_id = $2)
+       AND (resource_id IS NULL OR resource_id = ANY($3))
+     LIMIT 1`,
+    [orgId, threadId, allowed]
   );
   return rows.length > 0;
 }
@@ -261,7 +278,7 @@ export async function pgDeleteDocument(orgId: string, documentId: string) {
 export async function pgSearch(
   orgId: string,
   query: string,
-  opts: { threadId?: string | null; k?: number; resourceIds?: string[] } = {}
+  opts: SearchOpts
 ): Promise<LocalSearchResult[]> {
   await ensureSchema(orgId);
   const k = opts.k ?? (getNumSetting(orgId, "retrieval_k") || 8);
@@ -276,11 +293,24 @@ export async function pgSearch(
     // ~tens of ms and guaranteed correct. Revisit ANN past ~500k chunks.
     await client.query("SET LOCAL enable_indexscan = off");
     await client.query("SET LOCAL enable_bitmapscan = off");
-    const scopeClause = opts.resourceIds?.length
-      ? " AND (resource_id = ANY($5) OR thread_id = $3)"
-      : "";
-    const params: unknown[] = [toVectorLiteral(embedding), orgId, opts.threadId ?? null, k];
-    if (opts.resourceIds?.length) params.push(opts.resourceIds);
+    // Ownership filter: resource visibility is SQLite-side, so the allowed
+    // ids come in as a parameter. A NULL resource_id is a thread attachment.
+    const allowed = visibleResourceIds(orgId, opts.userId);
+    const params: unknown[] = [
+      toVectorLiteral(embedding),
+      orgId,
+      opts.threadId ?? null,
+      k,
+      allowed,
+    ];
+    let scopeClause = " AND (resource_id IS NULL OR resource_id = ANY($5))";
+    if (opts.resourceIds?.length) {
+      // Intersect the requested scope with what this person may see, so a
+      // handcrafted resourceIds list cannot reach someone else's facet.
+      const allowedSet = new Set(allowed);
+      params.push(opts.resourceIds.filter((r) => allowedSet.has(r)));
+      scopeClause = " AND (resource_id = ANY($6) OR thread_id = $3)";
+    }
     ({ rows } = await client.query(
       `SELECT document_id, content, meta, embedding <=> $1::vector AS distance
        FROM chunks

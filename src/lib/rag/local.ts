@@ -146,18 +146,39 @@ function sqliteDeleteDocument(documentId: string) {
 // Backend-aware existence check (drives whether the KB tool is offered).
 export async function hasLocalChunks(
   orgId: string,
-  threadId: string
+  threadId: string,
+  userId: string
 ): Promise<boolean> {
   if (process.env.PGVECTOR_URL) {
     const { pgHasChunks } = await import("./local-pg");
-    return pgHasChunks(orgId, threadId);
+    return pgHasChunks(orgId, threadId, userId);
   }
   const row = getDb()
     .prepare(
-      "SELECT 1 FROM chunks c JOIN documents d ON d.id = c.document_id WHERE d.org_id = ? AND (c.thread_id IS NULL OR c.thread_id = ?) LIMIT 1"
+      `SELECT 1 FROM chunks c
+       JOIN documents d ON d.id = c.document_id
+       LEFT JOIN resources r ON r.id = c.resource_id
+       WHERE d.org_id = ?
+         AND (c.thread_id IS NULL OR c.thread_id = ?)
+         -- thread attachments have no resource; facets must be visible
+         AND (c.resource_id IS NULL OR r.visibility = 'org' OR r.created_by = ?)
+       LIMIT 1`
     )
-    .get(orgId, threadId);
+    .get(orgId, threadId, userId);
   return Boolean(row);
+}
+
+// Facets belong to the person who created them unless they were explicitly
+// shared with the organization. Everything that reads the index has to respect
+// that, not just the pages that list facets.
+export function visibleResourceIds(orgId: string, userId: string): string[] {
+  return (
+    getDb()
+      .prepare(
+        "SELECT id FROM resources WHERE org_id = ? AND (visibility = 'org' OR created_by = ?)"
+      )
+      .all(orgId, userId) as { id: string }[]
+  ).map((r) => r.id);
 }
 
 export type LocalSearchResult = {
@@ -173,10 +194,19 @@ export type LocalSearchResult = {
 // Searches the org's knowledge base plus (optionally) one thread's
 // attachment chunks — the local equivalent of file_search over
 // [KB vector store, thread vector store].
+export type SearchOpts = {
+  threadId?: string | null;
+  k?: number;
+  resourceIds?: string[];
+  // Required for anything user-facing: without it the search would reach
+  // across into other people's private facets.
+  userId: string;
+};
+
 export async function searchLocal(
   orgId: string,
   query: string,
-  opts: { threadId?: string | null; k?: number; resourceIds?: string[] } = {}
+  opts: SearchOpts
 ): Promise<LocalSearchResult[]> {
   if (process.env.PGVECTOR_URL) {
     const { pgSearch } = await import("./local-pg");
@@ -188,7 +218,7 @@ export async function searchLocal(
 async function sqliteSearch(
   orgId: string,
   query: string,
-  opts: { threadId?: string | null; k?: number; resourceIds?: string[] } = {}
+  opts: SearchOpts
 ): Promise<LocalSearchResult[]> {
   const k = opts.k ?? (getNumSetting(orgId, "retrieval_k") || 8);
   recordMetric(orgId, "local_searches", 1);
@@ -197,7 +227,8 @@ async function sqliteSearch(
   const rows = db
     .prepare(
       `SELECT c.id, c.content, c.document_id, c.thread_id, c.resource_id, c.meta, v.distance,
-              d.name AS document_name, r.name AS resource_name
+              d.name AS document_name, r.name AS resource_name,
+              r.visibility AS resource_visibility, r.created_by AS resource_owner
        FROM vec_chunks v
        JOIN chunks c ON c.id = v.chunk_id
        JOIN documents d ON d.id = c.document_id AND d.org_id = ?
@@ -210,20 +241,32 @@ async function sqliteSearch(
     content: string;
     document_id: string;
     thread_id: string | null;
+    resource_id: string | null;
     meta: string;
     distance: number;
     document_name: string;
     resource_name: string | null;
+    resource_visibility: string | null;
+    resource_owner: string | null;
   }[];
   const wanted = opts.resourceIds?.length ? new Set(opts.resourceIds) : null;
   const scoped = rows.filter((r) => {
     const threadOk =
       r.thread_id === null || Boolean(opts.threadId && r.thread_id === opts.threadId);
     if (!threadOk) return false;
+    // Ownership: a chunk with no resource is a thread attachment, already
+    // constrained above. Anything else has to be shared or ours.
+    if (r.resource_id !== null) {
+      const visible =
+        r.resource_visibility === "org" || r.resource_owner === opts.userId;
+      if (!visible) return false;
+    }
     // Facet scoping: keep selected facets plus this thread's attachments.
     if (wanted) {
-      const rid = (r as { resource_id?: string | null }).resource_id ?? null;
-      return (rid !== null && wanted.has(rid)) || r.thread_id === opts.threadId;
+      return (
+        (r.resource_id !== null && wanted.has(r.resource_id)) ||
+        r.thread_id === opts.threadId
+      );
     }
     return true;
   });

@@ -11,6 +11,8 @@ import {
   Plus,
   X,
   ChevronRight,
+  Lock,
+  Users,
 } from "lucide-react";
 import { PageShell } from "@/components/TopBar";
 import { Badge, Button, Input, ProgressBar, Spinner } from "@/components/ui";
@@ -27,10 +29,15 @@ type Resource = {
   progress_phase: string | null;
   progress_done: number | null;
   progress_total: number | null;
+  branch: string | null;
+  visibility: "private" | "org";
+  created_by: string | null;
+  owner_email: string | null;
+  mine: boolean;
   sync_interval: string;
   last_synced_at: string | null;
   next_sync_at: string | null;
-  sync: { total: number; openai_synced: number; local_synced: number };
+  sync: { total: number; local_synced: number };
 };
 
 export default function FacetsPage() {
@@ -56,6 +63,15 @@ export default function FacetsPage() {
     return () => clearInterval(t);
   }, [resources, load]);
 
+  const setVisibility = async (id: string, visibility: "org" | "private") => {
+    await fetch(`/api/resources/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ visibility }),
+    });
+    load();
+  };
+
   const setSchedule = async (id: string, syncInterval: string) => {
     await fetch(`/api/resources/${id}`, {
       method: "PATCH",
@@ -66,7 +82,7 @@ export default function FacetsPage() {
   };
 
   const remove = async (id: string, name: string) => {
-    if (!confirm(`Remove "${name}" from both vector stores?`)) return;
+    if (!confirm(`Remove "${name}" and everything indexed from it?`)) return;
     await fetch(`/api/resources/${id}`, { method: "DELETE" });
     load();
   };
@@ -86,9 +102,9 @@ export default function FacetsPage() {
           <div>
             <h1 className="text-xl font-semibold">Facets</h1>
             <p className="mt-1 max-w-xl text-sm text-muted">
-              Each facet — a repo, Confluence space, folder, or file — is written to
-              both the OpenAI-hosted vector store and the local index, and kept in
-              sync. Chat retrieves across every facet.
+              Each facet — a repo, Confluence space, folder, or file — is indexed
+              and kept in sync. Chat retrieves across every facet you can see.
+              Facets are private to you unless you share them.
             </p>
           </div>
           <Button onClick={() => setAddOpen(true)} className="shrink-0">
@@ -100,11 +116,10 @@ export default function FacetsPage() {
           <table className="w-full min-w-[720px] table-fixed text-sm">
             <thead>
               <tr className="border-b border-border-app bg-surface-2 text-left text-xs uppercase tracking-wide text-muted">
-                <th className="w-[38%] px-4 py-2.5 font-medium">Resource</th>
-                <th className="w-[22%] px-4 py-2.5 font-medium">Status</th>
-                <th className="w-[15%] px-4 py-2.5 font-medium">OpenAI store</th>
-                <th className="w-[15%] px-4 py-2.5 font-medium">Local store</th>
-                <th className="w-[10%] px-4 py-2.5" />
+                <th className="w-[40%] px-4 py-2.5 font-medium">Resource</th>
+                <th className="w-[24%] px-4 py-2.5 font-medium">Status</th>
+                <th className="w-[16%] px-4 py-2.5 font-medium">Indexed</th>
+                <th className="w-[20%] px-4 py-2.5" />
               </tr>
             </thead>
             <tbody className="bg-surface">
@@ -118,7 +133,25 @@ export default function FacetsPage() {
                       <span className="min-w-0 truncate font-medium" title={r.name}>
                         {r.name}
                       </span>
+                      {r.branch && (
+                        <span
+                          className="shrink-0 rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[10px] text-muted"
+                          title="Tracked branch"
+                        >
+                          {r.branch}
+                        </span>
+                      )}
+                      {r.visibility === "org" ? (
+                        <Badge tone="neutral">shared</Badge>
+                      ) : (
+                        <Badge tone="neutral">private</Badge>
+                      )}
                     </div>
+                    {!r.mine && r.owner_email && (
+                      <div className="mt-0.5 text-[10px] text-muted">
+                        shared by {r.owner_email}
+                      </div>
+                    )}
                     {r.error && (
                       <div className="mt-0.5 truncate text-xs text-danger" title={r.error}>
                         {r.error}
@@ -161,22 +194,41 @@ export default function FacetsPage() {
                       </div>
                     )}
                   </td>
-                  <SyncCell synced={r.sync.openai_synced} total={r.sync.total} />
                   <SyncCell synced={r.sync.local_synced} total={r.sync.total} />
                   <td className="px-4 py-3 text-right whitespace-nowrap">
-                    {(r.status === "error" ||
-                      r.sync.openai_synced < r.sync.total ||
-                      r.sync.local_synced < r.sync.total) &&
+                    {(r.status === "error" || r.sync.local_synced < r.sync.total) &&
                       r.status !== "processing" && (
                         <button
                           onClick={() => resync(r.id)}
                           className="mr-1 rounded p-1.5 text-muted hover:text-accent cursor-pointer"
                           aria-label="Re-sync resource"
-                          title="Re-sync both stores"
+                          title="Re-sync this facet"
                         >
                           <RefreshCw className="size-4" />
                         </button>
                       )}
+                    {r.mine && (
+                      <button
+                        onClick={() =>
+                          setVisibility(r.id, r.visibility === "org" ? "private" : "org")
+                        }
+                        className="mr-1 rounded p-1.5 text-muted hover:text-accent cursor-pointer"
+                        aria-label={
+                          r.visibility === "org" ? "Make private" : "Share with everyone"
+                        }
+                        title={
+                          r.visibility === "org"
+                            ? "Shared with the organization — click to make it private again"
+                            : "Private to you — click to share with everyone"
+                        }
+                      >
+                        {r.visibility === "org" ? (
+                          <Users className="size-4" />
+                        ) : (
+                          <Lock className="size-4" />
+                        )}
+                      </button>
+                    )}
                     <button
                       onClick={() => remove(r.id, r.name)}
                       className="rounded p-1.5 text-muted hover:text-danger cursor-pointer"
@@ -321,8 +373,56 @@ function AddFacetDialog({
 
 function GithubPanel({ onDone, onClose }: { onDone: () => void; onClose: () => void }) {
   const [url, setUrl] = useState("");
+  const [branch, setBranch] = useState("");
+  const [branches, setBranches] = useState<string[]>([]);
+  const [defaultBranch, setDefaultBranch] = useState<string | null>(null);
+  const [isPrivate, setIsPrivate] = useState(false);
+  const [loadingBranches, setLoadingBranches] = useState(false);
+  const [branchError, setBranchError] = useState<string | null>(null);
+  const [shareWithOrg, setShareWithOrg] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Fetch the branch list once a plausible URL has been typed, so the picker
+  // is populated without a separate button.
+  useEffect(() => {
+    const trimmed = url.trim();
+    if (!/github\.com\/[\w.-]+\/[\w.-]+/i.test(trimmed)) {
+      setBranches([]);
+      setDefaultBranch(null);
+      setBranchError(null);
+      return;
+    }
+    let cancelled = false;
+    setLoadingBranches(true);
+    setBranchError(null);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/github/branches?url=${encodeURIComponent(trimmed)}`);
+        const data = await res.json();
+        if (cancelled) return;
+        if (!res.ok) {
+          setBranches([]);
+          setBranchError(data.error ?? "Could not read branches");
+        } else {
+          setBranches(data.branches ?? []);
+          setDefaultBranch(data.defaultBranch ?? null);
+          setIsPrivate(Boolean(data.private));
+          // A /tree/<branch> URL pre-selects that branch.
+          const m = trimmed.match(/\/tree\/(.+?)\/?$/);
+          if (m) setBranch(decodeURIComponent(m[1]));
+        }
+      } catch {
+        if (!cancelled) setBranchError("Could not reach GitHub");
+      } finally {
+        if (!cancelled) setLoadingBranches(false);
+      }
+    }, 500);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [url]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -332,7 +432,12 @@ function GithubPanel({ onDone, onClose }: { onDone: () => void; onClose: () => v
     const res = await fetch("/api/resources", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "github", url: url.trim() }),
+      body: JSON.stringify({
+        type: "github",
+        url: url.trim(),
+        branch: branch.trim() || undefined,
+        shareWithOrg,
+      }),
     });
     setBusy(false);
     if (!res.ok) {
@@ -346,8 +451,10 @@ function GithubPanel({ onDone, onClose }: { onDone: () => void; onClose: () => v
   return (
     <form onSubmit={submit} className="flex h-full flex-col p-5">
       <p className="text-sm text-muted">
-        The default branch is cloned, bundled by directory, and indexed into both
-        stores. Private repos need a token in Admin → Settings.
+        The repository is cloned, bundled by directory and indexed. Paste a
+        plain repo URL, or one pointing at a branch — a
+        <code className="mx-1 text-xs">/tree/&lt;branch&gt;</code> link is
+        understood.
       </p>
       <Input
         placeholder="https://github.com/org/repo"
@@ -356,6 +463,63 @@ function GithubPanel({ onDone, onClose }: { onDone: () => void; onClose: () => v
         className="mt-4"
         autoFocus
       />
+
+      <label className="mt-3 flex flex-col gap-1 text-sm">
+        <span className="text-muted">
+          Branch
+          {loadingBranches && <span className="ml-2 text-xs">reading branches…</span>}
+          {!loadingBranches && defaultBranch && (
+            <span className="ml-2 text-xs">
+              default is {defaultBranch}
+              {isPrivate && " · private repository"}
+            </span>
+          )}
+        </span>
+        {branches.length > 0 ? (
+          <select
+            value={branch}
+            onChange={(e) => setBranch(e.target.value)}
+            className="rounded-lg border border-border-app bg-surface px-2.5 py-2 text-sm"
+          >
+            <option value="">{defaultBranch ? `${defaultBranch} (default)` : "Default"}</option>
+            {branches.map((b) => (
+              <option key={b} value={b}>
+                {b}
+              </option>
+            ))}
+          </select>
+        ) : (
+          // No list (private without a token, rate limited, offline) — a typed
+          // name still works, so never block on the picker.
+          <Input
+            placeholder="leave blank for the default branch"
+            value={branch}
+            onChange={(e) => setBranch(e.target.value)}
+          />
+        )}
+      </label>
+      {branchError && (
+        <p className="mt-1 text-xs text-amber-500">
+          {branchError} — you can still type a branch name.
+        </p>
+      )}
+
+      <label className="mt-4 flex items-start gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={shareWithOrg}
+          onChange={(e) => setShareWithOrg(e.target.checked)}
+          className="mt-0.5"
+        />
+        <span>
+          Share with everyone
+          <span className="block text-xs text-muted">
+            Off: only you can see or search it. On: everyone in the
+            organization can, and it is indexed once instead of per person.
+          </span>
+        </span>
+      </label>
+
       {error && <p className="mt-2 text-sm text-danger">{error}</p>}
       <div className="mt-4 flex justify-end">
         <Button type="submit" disabled={busy || !url.trim()}>
@@ -378,6 +542,7 @@ function UploadPanel({
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
+  const [shareWithOrg, setShareWithOrg] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const upload = async (files: FileList | null) => {
@@ -385,6 +550,7 @@ function UploadPanel({
     setBusy(true);
     setError(null);
     const form = new FormData();
+    form.append("shareWithOrg", String(shareWithOrg));
     for (const f of Array.from(files)) {
       form.append("files", f);
       if (kind === "folder") {

@@ -10,10 +10,13 @@ For whoever administers the instance. Installation is in
 | | Members (the 15 accounts) | Administrator |
 |---|---|---|
 | Chat, facet scoping, file downloads | yes | yes |
-| Add / sync / delete content | yes | yes |
+| Add content, and sync or delete their own | yes | yes |
+| See someone else's private facet | no | no |
+| Sync or delete someone else's facet | no | yes |
 | Change their own password | yes | yes |
 | Pipeline, Tuning, Admin | no — hidden, and blocked by URL | yes |
 | Reset another person's password | no | yes |
+| Configure connectors, models, embeddings | no | yes |
 
 Administrator is a per-account flag, not a separate login. Grant it in
 **Admin → Users & invites**.
@@ -25,8 +28,28 @@ Administrator is a per-account flag, not a separate login. Grant it in
 ### Add a GitHub repository
 
 **Facets → Add → GitHub**, paste the URL. Ingestion runs in the background —
-the progress bar is live and survives a restart. Private repositories need
-`GITHUB_TOKEN` in `.env.local`.
+the progress bar is live and survives a restart.
+
+**Branches.** Once the URL is recognised, the branch list loads and you pick
+one; leaving it blank tracks the repository default. Pasting a URL copied from
+the browser while viewing a branch (`.../tree/release-2.1`) preselects that
+branch. Re-syncing always stays on the branch the facet was added with, so a
+scheduled sync never quietly jumps to `main`.
+
+To index two branches of the same repository, add it twice and pick a
+different branch each time. They are separate facets, separately scoped in
+chat, and each costs its own embedding pass.
+
+The branch a facet tracks is shown next to its name.
+
+**Private repositories.** Add a token in **Admin → Settings → GitHub
+connector** and press Test connection. Classic PAT with the `repo` scope, or a
+fine-grained token with Contents: Read on the repositories you want. Public
+repositories need no token. If `GITHUB_TOKEN` is set in `.env.local` it is
+used whenever the Admin field is blank.
+
+A private repository with no working token fails at clone time with a message
+saying so, rather than a generic git error.
 
 ### Add a Confluence space
 
@@ -52,6 +75,31 @@ creates only what is missing and prints the new password.
 
 **Admin → Users & invites → Delete**. Their chat history goes with them;
 indexed content is owned by the organization and stays.
+
+---
+
+## Who can see which facets
+
+**A facet belongs to the person who added it and is private by default.** It
+appears only in their facet list, and only their questions retrieve from it.
+Nobody else — including administrators, in chat — gets answers grounded in it.
+
+To make one available to everyone, tick **Share with everyone** when adding
+it, or use the padlock button in the facet list afterwards. Shared facets are
+marked *shared*, with the owner's address underneath, and anyone can scope a
+conversation to them.
+
+Only the owner can re-sync, reschedule or delete a facet. Administrators can
+too, so that facets belonging to someone who has left can be cleaned up.
+
+**Which one to use.** Shared is usually right for the common corpus — a
+repository indexed once as shared costs one embedding pass and one copy on
+disk, where fifteen people each adding it privately costs fifteen of each.
+Private is right for a personal scratch area, or a repository the rest of the
+team should not be reading.
+
+Facets that already existed before this became per-user were left shared, so
+nothing disappeared from anyone's list on upgrade.
 
 ---
 
@@ -199,8 +247,16 @@ scope in the chat sidebar.
 
 **An ingestion is stuck**
 Check Pipeline for the error, then **Re-sync** on the facet. Repository clones
-that fail are usually authentication — confirm `GITHUB_TOKEN` is set and still
-valid.
+that fail are usually authentication — press Test connection in **Admin →
+Settings → GitHub connector**.
+
+**"Branch X does not exist"**
+The branch was deleted or renamed after the facet was added. Delete the facet
+and add it again on a branch that exists; the tracked branch is fixed once set.
+
+**Someone says a document is missing from answers**
+Check who owns the facet. If it is private to a colleague, their material will
+never appear in this person's answers by design — the owner has to share it.
 
 **Retrieval quality is poor on a big codebase**
 In order: raise Top-K to 12–16; if that is not enough, consider switching the

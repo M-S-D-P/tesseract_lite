@@ -13,10 +13,11 @@ to answer the question in front of it.
 - **Chat with citations.** Answers quote the source and link to the file or
   Confluence page they came from.
 - **Facets.** Group your content into named collections and scope a
-  conversation to one of them.
-- **Connectors.** GitHub repositories (public or private), Confluence spaces,
-  and direct uploads — PDF, DOCX, Markdown, spreadsheets, source files, whole
-  folders.
+  conversation to one of them. A facet is private to whoever added it unless
+  they share it with the organization.
+- **Connectors.** GitHub repositories — public or private, on any branch you
+  choose — Confluence spaces, and direct uploads: PDF, DOCX, Markdown,
+  spreadsheets, source files, whole folders.
 - **Scheduled sync.** Keep a repository or space current every 6 hours, daily
   or weekly. Unchanged pages are skipped.
 - **Code structure awareness.** For Rails codebases it extracts models,

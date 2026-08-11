@@ -19,6 +19,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       orgId: user.orgId,
       setId: id,
       count: String(n),
+      // Questions come from the facets this person can actually retrieve.
+      userId: user.id,
     });
     return Response.json({ jobId, count: n });
   } catch (e) {

@@ -24,6 +24,10 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   corpus_version: "0", // bumped on every ingest/delete
   system_prompt:
     "You are Tesseract, an internal knowledge assistant. When a question could involve the organization's code, documents, or internal knowledge, ALWAYS search the knowledge base first and ground your answer in what you find — quote or reference the retrieved material rather than answering from memory. Be direct and cite the sources you used. When citing Confluence pages, include their URL (retrieved pages carry a Source: line). When an architecture, flow, or sequence explanation would benefit from a diagram, include a Mermaid code block (```mermaid) — the UI renders it as an interactive diagram. When the user asks for a spreadsheet, workbook, plan file, or exportable document, call the generate_file tool (xlsx/csv/docx/pdf) instead of saying you cannot attach files.",
+  // GitHub connector. Needed only for private repositories; public ones clone
+  // without it. A classic PAT with `repo`, or a fine-grained token with
+  // Contents: Read. Falls back to the GITHUB_TOKEN environment variable.
+  github_token: "",
   // Confluence REST connector (API-token based; email is the token owner's)
   confluence_base_url: "",
   confluence_email: "",

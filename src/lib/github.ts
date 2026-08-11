@@ -3,6 +3,7 @@ import { promisify } from "util";
 import fs from "fs";
 import path from "path";
 import { getDb, uid, REPOS_DIR } from "./db";
+import { getSetting } from "./settings";
 import { isIngestableFile } from "./rag/extract";
 import { ingestDocument, setResourceProgress } from "./rag/ingest";
 
@@ -34,32 +35,167 @@ function walk(dir: string, root: string, out: string[]) {
   }
 }
 
-export function parseGithubUrl(url: string): { owner: string; repo: string } | null {
+export function parseGithubUrl(
+  url: string
+): { owner: string; repo: string; branch: string | null } | null {
   const m = url.trim().match(
-    /github\.com[/:]([\w.-]+)\/([\w.-]+?)(?:\.git)?(?:\/.*)?$/i
+    /github\.com[/:]([\w.-]+)\/([\w.-]+?)(?:\.git)?(?:\/(.*))?$/i
   );
   if (!m) return null;
-  return { owner: m[1], repo: m[2] };
+  // Pasting the URL straight from the browser while on a branch gives
+  // .../tree/<branch>, so honour that instead of silently taking the default.
+  // Branch names may contain slashes (feature/foo), hence the greedy tail.
+  const tail = m[3] ?? "";
+  const treeMatch = tail.match(/^tree\/(.+?)\/?$/i);
+  return {
+    owner: m[1],
+    repo: m[2],
+    branch: treeMatch ? decodeURIComponent(treeMatch[1]) : null,
+  };
+}
+
+// The token that reaches private repositories. The per-organization setting
+// wins so an admin can configure it in the UI; the environment variable stays
+// as a fallback for installs that would rather keep it out of the database.
+export function githubToken(orgId?: string): string | undefined {
+  const fromSettings = orgId ? getSetting(orgId, "github_token").trim() : "";
+  return fromSettings || process.env.GITHUB_TOKEN || undefined;
+}
+
+function cloneUrlFor(owner: string, repo: string, token?: string): string {
+  return token
+    ? `https://x-access-token:${token}@github.com/${owner}/${repo}.git`
+    : `https://github.com/${owner}/${repo}.git`;
+}
+
+// Branch list for the picker. Uses the REST API rather than `git ls-remote`
+// so a bad token reports "not found or no access" instead of hanging on a
+// credential prompt.
+export async function listBranches(
+  url: string,
+  orgId: string
+): Promise<{ branches: string[]; defaultBranch: string | null; private: boolean }> {
+  const parsed = parseGithubUrl(url);
+  if (!parsed) throw new Error("Not a valid GitHub repository URL");
+  const token = githubToken(orgId);
+  const headers: Record<string, string> = {
+    Accept: "application/vnd.github+json",
+    "User-Agent": "tesseract",
+  };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const base = `https://api.github.com/repos/${parsed.owner}/${parsed.repo}`;
+  const repoRes = await fetch(base, { headers });
+  if (repoRes.status === 404) {
+    throw new Error(
+      token
+        ? "Repository not found, or the configured GitHub token cannot see it"
+        : "Repository not found. If it is private, add a GitHub token in Admin → Settings"
+    );
+  }
+  if (repoRes.status === 401) {
+    throw new Error("The configured GitHub token was rejected");
+  }
+  if (!repoRes.ok) throw new Error(`GitHub returned ${repoRes.status}`);
+  const repoJson = (await repoRes.json()) as {
+    default_branch?: string;
+    private?: boolean;
+  };
+
+  const branches: string[] = [];
+  // Up to 300 branches; beyond that the picker is the wrong tool anyway and
+  // the field still accepts a typed name.
+  for (let page = 1; page <= 3; page++) {
+    const res = await fetch(`${base}/branches?per_page=100&page=${page}`, { headers });
+    if (!res.ok) break;
+    const rows = (await res.json()) as { name: string }[];
+    branches.push(...rows.map((b) => b.name));
+    if (rows.length < 100) break;
+  }
+
+  const defaultBranch = repoJson.default_branch ?? null;
+  // Default first, then the rest alphabetically — it is what people want.
+  branches.sort((a, b) => {
+    if (a === defaultBranch) return -1;
+    if (b === defaultBranch) return 1;
+    return a.localeCompare(b);
+  });
+  return { branches, defaultBranch, private: Boolean(repoJson.private) };
 }
 
 // Clones a repo, packs its text files into markdown bundles (path-headed
 // sections), and ingests each bundle through the dual-store pipeline.
-export async function ingestGithubRepo(resourceId: string, url: string) {
+export async function ingestGithubRepo(
+  resourceId: string,
+  url: string,
+  branchArg?: string | null
+) {
   const db = getDb();
   const parsed = parseGithubUrl(url);
   if (!parsed) throw new Error("Not a valid GitHub URL");
+  const row = db
+    .prepare("SELECT org_id, branch FROM resources WHERE id = ?")
+    .get(resourceId) as { org_id: string; branch: string | null } | undefined;
+  // Explicit argument wins, then whatever the resource already tracks (so a
+  // re-sync stays on its branch), then the branch embedded in the URL.
+  const branch = branchArg ?? row?.branch ?? parsed.branch ?? null;
+
   const cloneDir = path.join(REPOS_DIR, `clone-${uid()}`);
   db.prepare("UPDATE resources SET status = 'processing' WHERE id = ?").run(resourceId);
   try {
-    setResourceProgress(resourceId, "cloning repository");
-    const token = process.env.GITHUB_TOKEN;
-    const cloneUrl = token
-      ? `https://x-access-token:${token}@github.com/${parsed.owner}/${parsed.repo}.git`
-      : `https://github.com/${parsed.owner}/${parsed.repo}.git`;
-    await execFileAsync("git", ["clone", "--depth", "1", cloneUrl, cloneDir], {
-      timeout: 300_000,
-      env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
-    });
+    setResourceProgress(
+      resourceId,
+      branch ? `cloning repository (${branch})` : "cloning repository"
+    );
+    const token = githubToken(row?.org_id);
+    const cloneUrl = cloneUrlFor(parsed.owner, parsed.repo, token);
+    const args = ["clone", "--depth", "1"];
+    if (branch) args.push("--branch", branch, "--single-branch");
+    args.push(cloneUrl, cloneDir);
+    try {
+      await execFileAsync("git", args, {
+        timeout: 300_000,
+        env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+      });
+    } catch (e) {
+      // git puts the reason on stderr and the token is in the URL, so scrub
+      // before it can reach the UI or the logs.
+      const stderr = String((e as { stderr?: string }).stderr ?? (e as Error).message);
+      const safe = token ? stderr.split(token).join("***") : stderr;
+      if (branch && /Remote branch .* not found|not found in upstream/i.test(safe)) {
+        throw new Error(`Branch "${branch}" does not exist in ${parsed.owner}/${parsed.repo}`);
+      }
+      if (/Authentication failed|could not read Username|403/i.test(safe)) {
+        throw new Error(
+          token
+            ? "GitHub rejected the configured token for this repository"
+            : "This repository is private. Add a GitHub token in Admin → Settings."
+        );
+      }
+      throw new Error(safe.trim().split("\n").slice(-3).join(" ").slice(0, 300));
+    }
+
+    // Record the branch actually checked out, so the list shows something
+    // truthful even when the caller let the default win.
+    let resolvedBranch = branch;
+    if (!resolvedBranch) {
+      try {
+        const { stdout } = await execFileAsync(
+          "git",
+          ["-C", cloneDir, "rev-parse", "--abbrev-ref", "HEAD"],
+          { timeout: 15_000 }
+        );
+        resolvedBranch = stdout.trim() || null;
+      } catch {
+        /* leave it unknown rather than failing the ingestion */
+      }
+    }
+    if (resolvedBranch) {
+      db.prepare("UPDATE resources SET branch = ? WHERE id = ?").run(
+        resolvedBranch,
+        resourceId
+      );
+    }
 
     // Rails intelligence: extract routes/models/schema/controllers into the
     // knowledge graph before bundling (stage 6+8 of the platform pipeline).
@@ -140,6 +276,7 @@ export async function ingestGithubRepo(resourceId: string, url: string) {
     const meta = {
       owner: parsed.owner,
       repo: parsed.repo,
+      ...(resolvedBranch ? { branch: resolvedBranch } : {}),
       files: fileCount,
       bundles: bundles.length,
       ...(graphCounts ? { graph: graphCounts } : {}),

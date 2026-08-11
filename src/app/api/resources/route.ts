@@ -10,11 +10,19 @@ export async function GET() {
   try {
     const user = await requireUser();
     const db = getDb();
+    // Own facets plus anything explicitly shared with the organization.
     const resources = db
-      .prepare("SELECT * FROM resources WHERE org_id = ? ORDER BY created_at DESC")
-      .all(user.orgId) as { id: string }[];
+      .prepare(
+        `SELECT r.*, u.email AS owner_email
+         FROM resources r
+         LEFT JOIN users u ON u.id = r.created_by
+         WHERE r.org_id = ? AND (r.visibility = 'org' OR r.created_by = ?)
+         ORDER BY r.created_at DESC`
+      )
+      .all(user.orgId, user.id) as { id: string; created_by: string | null }[];
     const withStatus = resources.map((r) => ({
       ...r,
+      mine: r.created_by === user.id,
       sync: summarizeResourceStatus(r.id),
     }));
     return Response.json({ resources: withStatus });
@@ -38,6 +46,8 @@ export async function POST(request: Request) {
         type?: string;
         url?: string;
         spaceKey?: string;
+        branch?: string;
+        shareWithOrg?: boolean;
       };
       if (body.type === "confluence") {
         // Personal space keys (~123...) are case-sensitive — never uppercase.
@@ -48,8 +58,15 @@ export async function POST(request: Request) {
         }
         const id = uid();
         db.prepare(
-          "INSERT INTO resources (id, org_id, type, name, ref, status, created_by) VALUES (?, ?, 'confluence', ?, ?, 'pending', ?)"
-        ).run(id, user.orgId, `Confluence: ${spaceKey}`, spaceKey, user.id);
+          "INSERT INTO resources (id, org_id, type, name, ref, visibility, status, created_by) VALUES (?, ?, 'confluence', ?, ?, ?, 'pending', ?)"
+        ).run(
+          id,
+          user.orgId,
+          `Confluence: ${spaceKey}`,
+          spaceKey,
+          body.shareWithOrg ? "org" : "private",
+          user.id
+        );
         enqueueJob("confluence_ingest", { resourceId: id, spaceKey });
         return Response.json({ id, status: "pending" });
       }
@@ -60,12 +77,23 @@ export async function POST(request: Request) {
       if (!parsed) {
         return Response.json({ error: "Not a valid GitHub repository URL" }, { status: 400 });
       }
+      // Explicit field wins over a branch embedded in a /tree/ URL.
+      const branch = body.branch?.trim() || parsed.branch || null;
       const id = uid();
       db.prepare(
-        "INSERT INTO resources (id, org_id, type, name, ref, status, created_by) VALUES (?, ?, 'github', ?, ?, 'pending', ?)"
-      ).run(id, user.orgId, `${parsed.owner}/${parsed.repo}`, body.url, user.id);
+        `INSERT INTO resources (id, org_id, type, name, ref, branch, visibility, status, created_by)
+         VALUES (?, ?, 'github', ?, ?, ?, ?, 'pending', ?)`
+      ).run(
+        id,
+        user.orgId,
+        `${parsed.owner}/${parsed.repo}`,
+        body.url,
+        branch,
+        body.shareWithOrg ? "org" : "private",
+        user.id
+      );
       // Durable background job; survives restarts, the UI polls status.
-      enqueueJob("github_ingest", { resourceId: id, url: body.url });
+      enqueueJob("github_ingest", { resourceId: id, url: body.url, branch });
       return Response.json({ id, status: "pending" });
     }
 
@@ -88,6 +116,8 @@ export async function POST(request: Request) {
     }
     const files = form.getAll("files") as File[];
     const paths = form.getAll("paths").map(String);
+    // Uploads are private to the uploader unless they tick "share".
+    const visibility = form.get("shareWithOrg") === "true" ? "org" : "private";
     if (files.length === 0) {
       return Response.json({ error: "No files provided" }, { status: 400 });
     }
@@ -98,8 +128,8 @@ export async function POST(request: Request) {
       const folderName = paths[0].split("/")[0] || "folder";
       const id = uid();
       db.prepare(
-        "INSERT INTO resources (id, org_id, type, name, ref, status, created_by) VALUES (?, ?, 'folder', ?, ?, 'pending', ?)"
-      ).run(id, user.orgId, `Folder: ${folderName}`, folderName, user.id);
+        "INSERT INTO resources (id, org_id, type, name, ref, visibility, status, created_by) VALUES (?, ?, 'folder', ?, ?, ?, 'pending', ?)"
+      ).run(id, user.orgId, `Folder: ${folderName}`, folderName, visibility, user.id);
       const { stagingDirFor } = await import("@/lib/folder");
       const fs = await import("fs");
       const path = await import("path");
@@ -123,8 +153,8 @@ export async function POST(request: Request) {
     for (const file of files) {
       const id = uid();
       db.prepare(
-        "INSERT INTO resources (id, org_id, type, name, ref, status, created_by) VALUES (?, ?, 'file', ?, ?, 'processing', ?)"
-      ).run(id, user.orgId, file.name, file.name, user.id);
+        "INSERT INTO resources (id, org_id, type, name, ref, visibility, status, created_by) VALUES (?, ?, 'file', ?, ?, ?, 'processing', ?)"
+      ).run(id, user.orgId, file.name, file.name, visibility, user.id);
       created.push({ id, name: file.name });
       const buffer = Buffer.from(await file.arrayBuffer());
       // Ingest inline (dual-write); errors land on the resource row.

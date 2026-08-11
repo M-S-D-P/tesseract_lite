@@ -58,7 +58,7 @@ async function runJob(job: JobRow) {
   // Handlers are imported lazily to avoid circular imports at module load.
   if (job.type === "github_ingest") {
     const { ingestGithubRepo } = await import("./github");
-    await ingestGithubRepo(payload.resourceId, payload.url);
+    await ingestGithubRepo(payload.resourceId, payload.url, payload.branch ?? null);
   } else if (job.type === "github_resync") {
     // Repair from stored bundles when they exist (cheap — only failed/stale
     // sides re-ingest); fall back to a full re-clone when they don't.
@@ -88,7 +88,12 @@ async function runJob(job: JobRow) {
     await ingestStagedFolder(payload.resourceId);
   } else if (job.type === "eval_generate") {
     const { generateQuestions } = await import("./eval");
-    await generateQuestions(payload.orgId, payload.setId, Number(payload.count) || 10);
+    await generateQuestions(
+      payload.orgId,
+      payload.setId,
+      Number(payload.count) || 10,
+      payload.userId
+    );
   } else if (job.type === "eval_run") {
     const { runEval } = await import("./eval");
     try {

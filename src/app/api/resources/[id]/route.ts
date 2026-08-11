@@ -1,5 +1,6 @@
 import { getDb } from "@/lib/db";
 import { requireUser, errorResponse } from "@/lib/auth";
+import { loadResource } from "@/lib/resource-access";
 import { deleteResource, summarizeResourceStatus } from "@/lib/rag/ingest";
 
 export async function GET(
@@ -9,10 +10,7 @@ export async function GET(
   try {
     const user = await requireUser();
     const { id } = await params;
-    const resource = getDb()
-      .prepare("SELECT * FROM resources WHERE id = ? AND org_id = ?")
-      .get(id, user.orgId);
-    if (!resource) return Response.json({ error: "Not found" }, { status: 404 });
+    const resource = loadResource(id, user);
     const documents = getDb()
       .prepare(
         "SELECT id, name, path, size, openai_status, local_status, error FROM documents WHERE resource_id = ? ORDER BY name"
@@ -32,20 +30,33 @@ export async function PATCH(
   try {
     const user = await requireUser();
     const { id } = await params;
-    const { syncInterval } = await request.json();
+    const { syncInterval, visibility } = (await request.json()) as {
+      syncInterval?: string;
+      visibility?: string;
+    };
+    const db = getDb();
+    loadResource(id, user, "write");
+
+    // Sharing a facet with the organization, or taking it back private.
+    if (visibility !== undefined) {
+      if (visibility !== "org" && visibility !== "private") {
+        return Response.json(
+          { error: "visibility must be 'org' or 'private'" },
+          { status: 400 }
+        );
+      }
+      db.prepare("UPDATE resources SET visibility = ? WHERE id = ?").run(visibility, id);
+      if (syncInterval === undefined) return Response.json({ ok: true });
+    }
+
     const { SYNC_INTERVALS } = await import("@/lib/jobs");
-    if (syncInterval !== "manual" && !SYNC_INTERVALS[syncInterval]) {
+    if (syncInterval !== "manual" && !SYNC_INTERVALS[syncInterval ?? ""]) {
       return Response.json(
         { error: "syncInterval must be one of: manual, 6h, daily, weekly" },
         { status: 400 }
       );
     }
-    const db = getDb();
-    const resource = db
-      .prepare("SELECT id FROM resources WHERE id = ? AND org_id = ?")
-      .get(id, user.orgId);
-    if (!resource) return Response.json({ error: "Not found" }, { status: 404 });
-    const hours = SYNC_INTERVALS[syncInterval];
+    const hours = SYNC_INTERVALS[syncInterval ?? ""];
     db.prepare(
       "UPDATE resources SET sync_interval = ?, next_sync_at = ? WHERE id = ?"
     ).run(
@@ -67,10 +78,7 @@ export async function DELETE(
   try {
     const user = await requireUser();
     const { id } = await params;
-    const owned = getDb()
-      .prepare("SELECT id FROM resources WHERE id = ? AND org_id = ?")
-      .get(id, user.orgId);
-    if (!owned) return Response.json({ error: "Not found" }, { status: 404 });
+    loadResource(id, user, "write");
     await deleteResource(id);
     return Response.json({ ok: true });
   } catch (e) {

@@ -84,7 +84,7 @@ export async function runCompletion(opts: {
   const resolved = resolveModel(opts.orgId, opts.reasoning);
   const model = opts.model?.trim() || resolved.model;
   const effort = resolved.effort;
-  const hasChunks = await hasLocalChunks(opts.orgId, opts.threadId);
+  const hasChunks = await hasLocalChunks(opts.orgId, opts.threadId, opts.userId);
 
   // Lite retrieves from the local vector index only — there is no hosted
   // vector store to switch to.
@@ -177,6 +177,7 @@ export async function runCompletion(opts: {
     const query = String(args.query ?? "");
     const results = await searchLocal(opts.orgId, query, {
       threadId: opts.threadId,
+      userId: opts.userId,
       k: getNumSetting(opts.orgId, "retrieval_k") || 8,
       resourceIds: opts.resourceIds,
     });
@@ -200,6 +201,7 @@ export async function runCompletion(opts: {
       const k = (getNumSetting(opts.orgId, "retrieval_k") || 8) * 2;
       const results = await searchLocal(opts.orgId, opts.message, {
         threadId: opts.threadId,
+        userId: opts.userId,
         k,
         resourceIds: opts.resourceIds,
       });

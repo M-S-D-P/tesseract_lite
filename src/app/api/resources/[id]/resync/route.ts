@@ -1,5 +1,6 @@
 import { getDb } from "@/lib/db";
 import { requireUser, errorResponse } from "@/lib/auth";
+import { loadResource } from "@/lib/resource-access";
 import { enqueueJob } from "@/lib/jobs";
 
 // POST /api/resources/:id/resync — repairs a resource whose stores have
@@ -14,10 +15,7 @@ export async function POST(
     const user = await requireUser();
     const { id } = await params;
     const db = getDb();
-    const resource = db
-      .prepare("SELECT * FROM resources WHERE id = ? AND org_id = ?")
-      .get(id, user.orgId) as { id: string; type: string; ref: string | null } | undefined;
-    if (!resource) return Response.json({ error: "Not found" }, { status: 404 });
+    const resource = loadResource(id, user, "write");
 
     db.prepare(
       "UPDATE resources SET status = 'processing', error = NULL WHERE id = ?"
@@ -27,6 +25,8 @@ export async function POST(
       if (!resource.ref) {
         return Response.json({ error: "Resource has no repository URL" }, { status: 400 });
       }
+      // No branch passed: ingestGithubRepo reads the tracked branch off the
+      // resource, so a re-sync stays on whatever branch it was added with.
       enqueueJob("github_resync", { resourceId: id, url: resource.ref });
     } else if (resource.type === "confluence") {
       enqueueJob("confluence_ingest", { resourceId: id, spaceKey: resource.ref ?? "" });

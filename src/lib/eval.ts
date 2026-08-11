@@ -76,28 +76,40 @@ function parseJson(text: string): Record<string, unknown> | null {
 
 type SampledChunk = { content: string; documentId: string };
 
-async function sampleChunks(orgId: string, n: number): Promise<SampledChunk[]> {
+// Questions are generated from the corpus the requesting person can see, so a
+// run never asks about material they could not retrieve an answer from.
+async function sampleChunks(
+  orgId: string,
+  n: number,
+  userId: string
+): Promise<SampledChunk[]> {
+  const { visibleResourceIds } = await import("./rag/local");
+  const allowed = visibleResourceIds(orgId, userId);
   if (process.env.PGVECTOR_URL) {
     const { getPool } = await import("./rag/local-pg");
     const { rows } = await getPool().query(
       `SELECT content, document_id FROM chunks
        WHERE org_id = $1 AND thread_id IS NULL AND length(content) > 400
+         AND resource_id = ANY($3)
        ORDER BY random() LIMIT $2`,
-      [orgId, n]
+      [orgId, n, allowed]
     );
     return rows.map((r: { content: string; document_id: string }) => ({
       content: r.content,
       documentId: r.document_id,
     }));
   }
+  if (allowed.length === 0) return [];
+  const placeholders = allowed.map(() => "?").join(",");
   const rows = getDb()
     .prepare(
       `SELECT c.content, c.document_id FROM chunks c
        JOIN documents d ON d.id = c.document_id
        WHERE d.org_id = ? AND c.thread_id IS NULL AND length(c.content) > 400
+         AND c.resource_id IN (${placeholders})
        ORDER BY RANDOM() LIMIT ?`
     )
-    .all(orgId, n) as { content: string; document_id: string }[];
+    .all(orgId, ...allowed, n) as { content: string; document_id: string }[];
   return rows.map((r) => ({ content: r.content, documentId: r.document_id }));
 }
 
@@ -119,11 +131,12 @@ EXCERPT:
 export async function generateQuestions(
   orgId: string,
   setId: string,
-  count: number
+  count: number,
+  userId: string
 ): Promise<number> {
   const db = getDb();
   const model = getSetting(orgId, "eval_judge_model") || getSetting(orgId, "model_medium");
-  const chunks = await sampleChunks(orgId, count);
+  const chunks = await sampleChunks(orgId, count, userId);
   let created = 0;
   for (const chunk of chunks) {
     try {
@@ -184,11 +197,19 @@ Respond with JSON only: {"correctness": N, "groundedness": N, "note": "one short
 export async function runEval(runId: string): Promise<void> {
   const db = getDb();
   const run = db.prepare("SELECT * FROM eval_runs WHERE id = ?").get(runId) as
-    | { id: string; org_id: string; set_id: string; config: string }
+    | {
+        id: string;
+        org_id: string;
+        set_id: string;
+        config: string;
+        created_by: string | null;
+      }
     | undefined;
   if (!run) return;
   const cfg: EvalConfig = JSON.parse(run.config);
   const orgId = run.org_id;
+  // Score against exactly the corpus the person who started the run can see.
+  const userId = run.created_by ?? "";
 
   const questions = db
     .prepare("SELECT * FROM eval_questions WHERE set_id = ? ORDER BY created_at")
@@ -207,7 +228,10 @@ export async function runEval(runId: string): Promise<void> {
   for (const q of questions) {
     const started = Date.now();
     try {
-      const results = await searchLocal(orgId, q.question, { k: cfg.retrievalK });
+      const results = await searchLocal(orgId, q.question, {
+        k: cfg.retrievalK,
+        userId,
+      });
 
       // Objective retrieval score: did the document the question came from
       // come back, and where in the ranking?

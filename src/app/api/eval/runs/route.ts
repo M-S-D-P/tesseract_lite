@@ -43,10 +43,20 @@ export async function POST(request: Request) {
 
     const config = { ...currentConfig(user.orgId), ...(overrides ?? {}) };
     const id = uid();
+    // The run is scored against what THIS person can retrieve, so the owner
+    // is recorded and the harness searches with their visibility.
     db.prepare(
-      `INSERT INTO eval_runs (id, org_id, set_id, label, config, status, total_count)
-       VALUES (?, ?, ?, ?, ?, 'queued', ?)`
-    ).run(id, user.orgId, setId, (label || "").slice(0, 120), JSON.stringify(config), count.n);
+      `INSERT INTO eval_runs (id, org_id, set_id, label, config, status, total_count, created_by)
+       VALUES (?, ?, ?, ?, ?, 'queued', ?, ?)`
+    ).run(
+      id,
+      user.orgId,
+      setId,
+      (label || "").slice(0, 120),
+      JSON.stringify(config),
+      count.n,
+      user.id
+    );
     enqueueJob("eval_run", { runId: id });
     return Response.json({ id, config });
   } catch (e) {

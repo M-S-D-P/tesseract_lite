@@ -79,6 +79,10 @@ CREATE TABLE IF NOT EXISTS resources (
   type TEXT NOT NULL, -- 'file' | 'github'
   name TEXT NOT NULL,
   ref TEXT,           -- original url / filename
+  branch TEXT,        -- github: tracked branch, NULL = repo default
+  -- New facets belong to the person who created them. 'org' shares one with
+  -- everyone in the organization.
+  visibility TEXT NOT NULL DEFAULT 'private',
   status TEXT NOT NULL DEFAULT 'pending', -- pending|processing|ready|error
   error TEXT,
   meta TEXT NOT NULL DEFAULT '{}',
@@ -171,6 +175,7 @@ CREATE TABLE IF NOT EXISTS eval_runs (
   done_count INTEGER NOT NULL DEFAULT 0,
   total_count INTEGER NOT NULL DEFAULT 0,
   metrics TEXT NOT NULL DEFAULT '{}',
+  created_by TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   finished_at TEXT
 );
@@ -262,6 +267,14 @@ export function getDb(): Database.Database {
     // Seeded and admin-reset passwords are handed over in plaintext, so the
     // owner is made to replace them before they can use the app.
     "ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0",
+    // Which branch a GitHub resource tracks. NULL means the repo default.
+    "ALTER TABLE resources ADD COLUMN branch TEXT",
+    // 'private' (only the creator) or 'org' (everyone in the organization).
+    // Existing rows predate ownership and were visible to all, so they keep
+    // that behaviour rather than silently vanishing from people's facet list.
+    "ALTER TABLE resources ADD COLUMN visibility TEXT NOT NULL DEFAULT 'org'",
+    // Evaluation is scored against one person's visible corpus.
+    "ALTER TABLE eval_runs ADD COLUMN created_by TEXT",
     // Multi-tenancy
     "ALTER TABLE users ADD COLUMN org_id TEXT",
     "ALTER TABLE invites ADD COLUMN org_id TEXT",
