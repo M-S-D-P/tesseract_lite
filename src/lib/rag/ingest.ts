@@ -168,7 +168,7 @@ export async function deleteResource(resourceId: string) {
 // Re-indexes every document in a file resource that is not currently synced,
 // using the originals kept on disk. (GitHub resources re-clone instead —
 // see resync in the resources route.)
-export async function resyncFileResource(resourceId: string) {
+export async function resyncFileResource(resourceId: string, force = false) {
   const db = getDb();
   const docs = db
     .prepare("SELECT * FROM documents WHERE resource_id = ?")
@@ -179,7 +179,10 @@ export async function resyncFileResource(resourceId: string) {
     stored_path: string | null;
     local_status: string;
   }[];
-  const stale = docs.filter((d) => d.local_status !== "synced");
+  // force bypasses the "already synced" skip — needed for a manual resync
+  // after switching vector backends, where local_status may still say
+  // "synced" against a backend that isn't the active one anymore.
+  const stale = force ? docs : docs.filter((d) => d.local_status !== "synced");
   const unchanged = docs.length - stale.length;
   let failures = 0;
   let done = 0;

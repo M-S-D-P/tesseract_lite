@@ -218,17 +218,19 @@ export default function FacetsPage() {
                   </td>
                   <SyncCell synced={r.sync.local_synced} total={r.sync.total} />
                   <td className="px-4 py-3 text-right whitespace-nowrap">
-                    {(r.status === "error" || r.sync.local_synced < r.sync.total) &&
-                      r.status !== "processing" && (
-                        <button
-                          onClick={() => resync(r.id)}
-                          className="mr-1 rounded p-1.5 text-muted hover:text-accent cursor-pointer"
-                          aria-label="Re-sync resource"
-                          title="Re-sync this facet"
-                        >
-                          <RefreshCw className="size-4" />
-                        </button>
-                      )}
+                    <button
+                      onClick={() => resync(r.id)}
+                      disabled={r.status === "processing"}
+                      className="mr-1 rounded p-1.5 text-muted hover:text-accent cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+                      aria-label="Re-sync resource"
+                      title={
+                        r.status === "processing"
+                          ? "Already syncing"
+                          : "Re-sync this facet — re-clones/re-fetches and re-indexes from scratch, even if it already shows ready"
+                      }
+                    >
+                      <RefreshCw className="size-4" />
+                    </button>
                     {r.mine && (
                       <button
                         onClick={() =>

@@ -54,35 +54,31 @@ export function enqueueJob(type: JobType, payload: Record<string, unknown>) {
 }
 
 async function runJob(job: JobRow) {
-  const payload = JSON.parse(job.payload) as Record<string, string>;
+  const payload = JSON.parse(job.payload) as Record<string, string> & { force?: boolean };
   // Handlers are imported lazily to avoid circular imports at module load.
   if (job.type === "github_ingest") {
     const { ingestGithubRepo } = await import("./github");
     await ingestGithubRepo(payload.resourceId, payload.url, payload.branch ?? null);
   } else if (job.type === "github_resync") {
-    // Repair from stored bundles when they exist (cheap — only failed/stale
-    // sides re-ingest); fall back to a full re-clone when they don't.
+    // Always re-clone. The previous "cheap path" re-embedded whatever text
+    // was already stored locally when every document had a stored_path —
+    // which never re-fetches from GitHub (so it can't pick up new commits)
+    // and does literally nothing once every document is already marked
+    // synced, which is exactly the state a resync is meant to fix.
     const db = getDb();
     const docs = db
-      .prepare(
-        "SELECT id, stored_path FROM documents WHERE resource_id = ?"
-      )
-      .all(payload.resourceId) as { id: string; stored_path: string | null }[];
-    if (docs.length > 0 && docs.every((d) => d.stored_path)) {
-      const { resyncFileResource } = await import("./rag/ingest");
-      await resyncFileResource(payload.resourceId);
-    } else {
-      const { deleteDocument } = await import("./rag/ingest");
-      const { ingestGithubRepo } = await import("./github");
-      for (const d of docs) await deleteDocument(d.id);
-      await ingestGithubRepo(payload.resourceId, payload.url);
-    }
+      .prepare("SELECT id FROM documents WHERE resource_id = ?")
+      .all(payload.resourceId) as { id: string }[];
+    const { deleteDocument } = await import("./rag/ingest");
+    const { ingestGithubRepo } = await import("./github");
+    for (const d of docs) await deleteDocument(d.id);
+    await ingestGithubRepo(payload.resourceId, payload.url);
   } else if (job.type === "file_resync") {
     const { resyncFileResource } = await import("./rag/ingest");
-    await resyncFileResource(payload.resourceId);
+    await resyncFileResource(payload.resourceId, payload.force ?? false);
   } else if (job.type === "confluence_ingest") {
     const { ingestConfluenceSpace } = await import("./confluence");
-    await ingestConfluenceSpace(payload.resourceId, payload.spaceKey);
+    await ingestConfluenceSpace(payload.resourceId, payload.spaceKey, payload.force ?? false);
   } else if (job.type === "folder_ingest") {
     const { ingestStagedFolder } = await import("./folder");
     await ingestStagedFolder(payload.resourceId);

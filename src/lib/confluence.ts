@@ -94,7 +94,11 @@ function htmlToText(html: string): string {
 
 // Ingest every page of a Confluence space through the dual-store pipeline.
 // Each page is one document, cited as "SPACE: Page Title".
-export async function ingestConfluenceSpace(resourceId: string, spaceKey: string) {
+export async function ingestConfluenceSpace(
+  resourceId: string,
+  spaceKey: string,
+  force = false
+) {
   const db = getDb();
   const orgId = (db.prepare("SELECT org_id FROM resources WHERE id = ?").get(resourceId) as
     | { org_id: string }
@@ -103,7 +107,10 @@ export async function ingestConfluenceSpace(resourceId: string, spaceKey: string
   db.prepare("UPDATE resources SET status = 'processing' WHERE id = ?").run(resourceId);
   try {
     // Incremental sync: existing pages are matched by name; unchanged content
-    // (same hash, fully synced) is SKIPPED instead of re-embedded.
+    // (same hash, fully synced) is SKIPPED instead of re-embedded — unless
+    // force is set, e.g. a manual resync after switching vector backends,
+    // where "synced" only means synced to whichever backend was active
+    // then and may not reflect the one active now.
     const fp = keyFingerprint();
     const previous = db
       .prepare(
@@ -183,6 +190,7 @@ export async function ingestConfluenceSpace(resourceId: string, spaceKey: string
       const hash = crypto.createHash("sha256").update(buffer).digest("hex");
       const existing = previousByName.get(docName);
       if (
+        !force &&
         existing &&
         existing.content_hash === hash &&
         existing.local_status === "synced" &&
