@@ -301,15 +301,17 @@ export async function pgSearch(
       orgId,
       opts.threadId ?? null,
       k,
-      allowed,
     ];
-    let scopeClause = " AND (resource_id IS NULL OR resource_id = ANY($5))";
+    let scopeClause: string;
     if (opts.resourceIds?.length) {
       // Intersect the requested scope with what this person may see, so a
       // handcrafted resourceIds list cannot reach someone else's facet.
       const allowedSet = new Set(allowed);
       params.push(opts.resourceIds.filter((r) => allowedSet.has(r)));
-      scopeClause = " AND (resource_id = ANY($6) OR thread_id = $3)";
+      scopeClause = " AND (resource_id = ANY($5) OR thread_id = $3)";
+    } else {
+      params.push(allowed);
+      scopeClause = " AND (resource_id IS NULL OR resource_id = ANY($5))";
     }
     ({ rows } = await client.query(
       `SELECT document_id, content, meta, embedding <=> $1::vector AS distance
