@@ -74,22 +74,32 @@ uploads, and repo clones only).
   sudo -u postgres pg_dump -Fc tesseract -f /opt/tesseract/backups/tesseract-pg-$(date +%F).dump
 
 
-JOB QUEUE (background ingestion, one job at a time)
-------------------------------------------------------
+JOB QUEUE (background ingestion, up to 3 jobs at once)
+-----------------------------------------------------------
 
 Resource ingestion, re-syncs, and eval generation/runs all go through one
-shared queue that processes a single job at a time (I/O heavy — see
-src/lib/jobs.ts). If nothing seems to be happening — Generate does nothing,
-a facet sits at "processing" forever — something else may be occupying that
-one slot, possibly stuck:
+shared queue (src/lib/jobs.ts). Was strictly one job at a time — every
+user's sync queued behind whatever anyone else had running, even though a
+job spends most of its time waiting on network I/O (git clone, Confluence/
+GitHub/Anthropic calls) rather than pegging the CPU. Now runs up to
+JOB_CONCURRENCY jobs concurrently (default 3 — kept modest on purpose, this
+host runs several other tenants' apps too). Two jobs targeting the SAME
+resource still never run at once (e.g. a scheduled resync landing mid manual
+resync) — only different resources' jobs overlap.
+
+Change the concurrency limit (add to .env.local, then restart):
+  JOB_CONCURRENCY=5
+
+If nothing seems to be happening — Generate does nothing, a facet sits at
+"processing" forever — check what's actually queued/running:
 
   sqlite3 /opt/tesseract/app/data/tesseract.db "SELECT id, type, status FROM jobs;"
 
 A job stuck at "running" with no progress for a long time (check whether its
 resource's document count is still climbing) crashed without updating its
-own status, and will block every other job forever until either the service
-restarts (jobs mid-flight requeue automatically on boot) or you clear it by
-hand:
+own status, and will occupy one of the concurrency slots forever until
+either the service restarts (jobs mid-flight requeue automatically on boot)
+or you clear it by hand:
 
   sqlite3 /opt/tesseract/app/data/tesseract.db "UPDATE jobs SET status='error', error='cleared manually' WHERE id='<job id>';"
 

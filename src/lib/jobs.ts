@@ -42,6 +42,12 @@ type JobRow = {
 
 const MAX_ATTEMPTS = 3;
 const POLL_MS = 2000;
+// How many jobs run at once. Previously 1 — every user's sync queued behind
+// whatever anyone else had running, even though each job is mostly waiting
+// on network I/O (git clone, Confluence/GitHub API calls, embedding calls)
+// rather than pegging the CPU the whole time. Kept modest and overridable:
+// this host runs several other tenants' apps too.
+const MAX_CONCURRENT_JOBS = Number(process.env.JOB_CONCURRENCY) || 3;
 
 export function enqueueJob(type: JobType, payload: Record<string, unknown>) {
   const db = getDb();
@@ -175,17 +181,40 @@ function scheduleDueSyncs() {
   }
 }
 
-async function tick() {
-  scheduleDueSyncs();
+function jobResourceId(job: JobRow): string | null {
+  try {
+    const id = (JSON.parse(job.payload) as Record<string, unknown>).resourceId;
+    return typeof id === "string" ? id : null;
+  } catch {
+    return null;
+  }
+}
+
+// Claims the oldest queued job whose resource isn't already being worked on
+// by another concurrently-running job — two jobs never touch the same
+// resource at once (e.g. a scheduled resync landing mid-manual-resync).
+function claimNextJob(excludeResourceIds: Set<string>): JobRow | undefined {
   const db = getDb();
-  const job = db
-    .prepare(
-      `UPDATE jobs SET status = 'running', updated_at = datetime('now'), attempts = attempts + 1
-       WHERE id = (SELECT id FROM jobs WHERE status = 'queued' ORDER BY created_at LIMIT 1)
-       RETURNING *`
-    )
-    .get() as JobRow | undefined;
-  if (!job) return;
+  const queued = db
+    .prepare("SELECT * FROM jobs WHERE status = 'queued' ORDER BY created_at")
+    .all() as JobRow[];
+  for (const job of queued) {
+    const resourceId = jobResourceId(job);
+    if (resourceId && excludeResourceIds.has(resourceId)) continue;
+    const claimed = db
+      .prepare(
+        `UPDATE jobs SET status = 'running', updated_at = datetime('now'), attempts = attempts + 1
+         WHERE id = ? AND status = 'queued'
+         RETURNING *`
+      )
+      .get(job.id) as JobRow | undefined;
+    if (claimed) return claimed;
+  }
+  return undefined;
+}
+
+async function runJobToCompletion(job: JobRow) {
+  const db = getDb();
   try {
     await runJob(job);
     db.prepare(
@@ -211,12 +240,14 @@ async function tick() {
 
 declare global {
   // eslint-disable-next-line no-var
-  var __tesseractWorker: { running: boolean } | undefined;
+  // Maps a running job's id to the resource it's working on (or null), so
+  // the claimer can skip other jobs targeting that same resource.
+  var __tesseractWorker: { active: Map<string, string | null> } | undefined;
 }
 
 export function startWorker() {
   if (globalThis.__tesseractWorker) return;
-  globalThis.__tesseractWorker = { running: false };
+  globalThis.__tesseractWorker = { active: new Map() };
   const db = getDb();
   // Resume: anything 'running' when the previous process died goes back to queued.
   db.prepare("UPDATE jobs SET status = 'queued' WHERE status = 'running'").run();
@@ -230,16 +261,19 @@ export function startWorker() {
          WHERE status IN ('queued','running')
        )`
   ).run();
-  setInterval(async () => {
+  setInterval(() => {
+    scheduleDueSyncs();
     const w = globalThis.__tesseractWorker!;
-    if (w.running) return; // one job at a time; ingestion is I/O heavy
-    w.running = true;
-    try {
-      await tick();
-    } catch (e) {
-      console.error("job worker tick failed:", (e as Error).message);
-    } finally {
-      w.running = false;
+    while (w.active.size < MAX_CONCURRENT_JOBS) {
+      const excluded = new Set(
+        [...w.active.values()].filter((id): id is string => id !== null)
+      );
+      const job = claimNextJob(excluded);
+      if (!job) break;
+      w.active.set(job.id, jobResourceId(job));
+      runJobToCompletion(job)
+        .catch((e) => console.error("job failed:", (e as Error).message))
+        .finally(() => w.active.delete(job.id));
     }
   }, POLL_MS).unref?.();
 }
