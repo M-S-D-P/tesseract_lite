@@ -95,6 +95,26 @@ export default function FacetsPage() {
     load();
   };
 
+  const changeBranch = async (id: string, currentBranch: string | null) => {
+    const next = window.prompt("Switch to branch:", currentBranch ?? "");
+    if (next === null) return; // cancelled
+    const trimmed = next.trim();
+    if (!trimmed || trimmed === currentBranch) return;
+    setResources((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, status: "processing" as const } : r))
+    );
+    const res = await fetch(`/api/resources/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ branch: trimmed }),
+    });
+    if (!res.ok) {
+      const { error } = await res.json().catch(() => ({ error: "Failed to switch branch" }));
+      alert(error ?? "Failed to switch branch");
+    }
+    load();
+  };
+
   return (
     <PageShell title="Facets">
       <div className="mx-auto max-w-4xl px-6 py-8 h-full overflow-y-auto">
@@ -134,12 +154,14 @@ export default function FacetsPage() {
                         {r.name}
                       </span>
                       {r.branch && (
-                        <span
-                          className="shrink-0 rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[10px] text-muted"
-                          title="Tracked branch"
+                        <button
+                          onClick={() => changeBranch(r.id, r.branch)}
+                          disabled={r.status === "processing"}
+                          className="shrink-0 rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[10px] text-muted hover:text-accent cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
+                          title="Tracked branch — click to switch"
                         >
                           {r.branch}
-                        </span>
+                        </button>
                       )}
                       {r.visibility === "org" ? (
                         <Badge tone="neutral">shared</Badge>
