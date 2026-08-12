@@ -147,9 +147,8 @@ export async function runAnthropic(ctx: ProviderRunContext): Promise<ProviderRes
   ];
   messages.push({ role: "user", content: userContent });
 
-  let text = "";
-  for (let loop = 0; loop < MAX_TOOL_LOOPS; loop++) {
-    const stream = client.beta.messages.stream(
+  const runTurn = (extraMessages: MessageParam[] = []) =>
+    client.beta.messages.stream(
       {
         model: ctx.model,
         max_tokens: 64000,
@@ -165,7 +164,7 @@ export async function runAnthropic(ctx: ProviderRunContext): Promise<ProviderRes
                 },
               ] as never)
             : ctx.systemPrompt,
-        messages,
+        messages: [...messages, ...extraMessages],
         ...(tools.length > 0 ? { tools: tools as never } : {}),
         ...(mcpServers.length > 0
           ? { mcp_servers: mcpServers as never, betas: ["mcp-client-2025-11-20"] }
@@ -175,6 +174,11 @@ export async function runAnthropic(ctx: ProviderRunContext): Promise<ProviderRes
       },
       { signal: ctx.signal }
     );
+
+  let text = "";
+  let hitCap = false;
+  for (let loop = 0; loop < MAX_TOOL_LOOPS; loop++) {
+    const stream = runTurn();
 
     stream.on("text", (delta) => {
       text += delta;
@@ -213,7 +217,32 @@ export async function runAnthropic(ctx: ProviderRunContext): Promise<ProviderRes
       results.push({ type: "tool_result", tool_use_id: call.id, content: output });
     }
     messages.push({ role: "user", content: results });
+    if (loop === MAX_TOOL_LOOPS - 1) hitCap = true;
   }
+
+  // The tool loop hit its cap while the model still wanted to investigate
+  // further. Without this, whatever it gathered on the final round trip is
+  // silently discarded and the reply is left as just the narration text that
+  // preceded each tool call — thorough models (more tool calls per turn) hit
+  // this far more than terse ones, which made them look worse, not better.
+  // One last no-more-tools turn forces a synthesis from what's already in.
+  if (hitCap) {
+    const stream = runTurn([
+      {
+        role: "user",
+        content:
+          "You've gathered enough context. Answer the question now using what you found — do not call any more tools.",
+      },
+    ]);
+    stream.on("text", (delta) => {
+      text += delta;
+      ctx.emitDelta(delta);
+    });
+    const message = await stream.finalMessage();
+    recordMetric(ctx.orgId, "chat_input_tokens", message.usage.input_tokens ?? 0, ctx.model);
+    recordMetric(ctx.orgId, "chat_output_tokens", message.usage.output_tokens ?? 0, ctx.model);
+  }
+
   return { text };
 }
 
@@ -228,7 +257,11 @@ export async function answerWithoutTools(opts: {
   signal?: AbortSignal;
 }): Promise<string> {
   const isHaiku = opts.model.includes("haiku");
-  const message = await anthropicClient().beta.messages.create(
+  // Non-streaming .create() throws client-side ("Streaming is required for
+  // operations that may take longer than 10 minutes") once max_tokens is
+  // this high combined with elevated effort — every non-Haiku call failed
+  // before reaching the network. Stream instead, same as runAnthropic.
+  const stream = anthropicClient().beta.messages.stream(
     {
       model: opts.model,
       max_tokens: 32000,
@@ -238,6 +271,7 @@ export async function answerWithoutTools(opts: {
     },
     { signal: opts.signal }
   );
+  const message = await stream.finalMessage();
   recordMetric(opts.orgId, "chat_input_tokens", message.usage.input_tokens ?? 0, opts.model);
   recordMetric(opts.orgId, "chat_output_tokens", message.usage.output_tokens ?? 0, opts.model);
   return message.content
