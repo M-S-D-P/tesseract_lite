@@ -1,0 +1,141 @@
+Tesseract Lite — operations cheat sheet
+========================================
+
+App:        http://10.2.0.28:3006   (plain HTTP, no TLS)
+Install:    /opt/tesseract/app       (runs as the "tesseract" systemd service)
+Admin:      smallela@cubesmart.com
+Current shared password (all 16 accounts, must be changed on first sign-in):
+            Password123
+(Not the seed script's cs2026x default — these accounts were reset by hand.
+If you reset again with the bulk command below, update this line to match.)
+
+The "deploy" user is in the "tesseract" group and can read/write everything
+under /opt/tesseract/app directly (log out and back in once if a command
+below still says "Permission denied" — group membership only applies to new
+login sessions). `sudo systemctl {start,stop,restart,status} tesseract` and
+`sudo journalctl -u tesseract` work for "deploy" without a password.
+
+
+START / STOP / STATUS
+----------------------
+
+  sudo systemctl start tesseract
+  sudo systemctl stop tesseract
+  sudo systemctl restart tesseract      # use this after editing .env.local
+  sudo systemctl status tesseract
+  sudo journalctl -u tesseract -f       # live logs
+  sudo journalctl -u tesseract -n 50    # last 50 lines
+
+
+CREATE A NEW ACCOUNT (prompts for email + password)
+-----------------------------------------------------
+
+  cd /opt/tesseract/app
+  npm run create-account
+
+  # create an admin instead of a member:
+  npm run create-account -- --admin
+
+  # force the person to change this password on first sign-in:
+  npm run create-account -- --force-change
+
+Password must be at least 10 characters (same rule the app enforces).
+
+
+RESET AN EXISTING ACCOUNT'S PASSWORD (prompts for email + new password)
+---------------------------------------------------------------------------
+
+  cd /opt/tesseract/app
+  npm run reset-password
+
+  # force a password change on their next sign-in:
+  npm run reset-password -- --force-change
+
+This is the CLI equivalent of Admin -> Users & invites -> Reset password
+in the web UI, except you choose the password instead of getting a random
+temporary one.
+
+
+OTHER ACCOUNT COMMANDS (direct SQL — sqlite3 is installed on this host)
+-----------------------------------------------------------------------
+
+  DB="/opt/tesseract/app/data/tesseract.db"
+
+  # List every account
+  sqlite3 "$DB" "SELECT email, name, role, status FROM users ORDER BY role, email;"
+
+  # Look up one account
+  sqlite3 "$DB" "SELECT * FROM users WHERE email = 'someone@cubesmart.com';"
+
+  # Promote a member to admin
+  sqlite3 "$DB" "UPDATE users SET role = 'admin' WHERE email = 'someone@cubesmart.com';"
+
+  # Demote an admin to member
+  sqlite3 "$DB" "UPDATE users SET role = 'member' WHERE email = 'someone@cubesmart.com';"
+
+  # Deactivate an account (blocks sign-in; keeps their data)
+  sqlite3 "$DB" "UPDATE users SET status = 'disabled' WHERE email = 'someone@cubesmart.com';"
+
+  # Reactivate it
+  sqlite3 "$DB" "UPDATE users SET status = 'active' WHERE email = 'someone@cubesmart.com';"
+
+  # Force a password change on next sign-in (without changing the password)
+  sqlite3 "$DB" "UPDATE users SET must_change_password = 1 WHERE email = 'someone@cubesmart.com';"
+
+  # Delete an account permanently
+  sqlite3 "$DB" "DELETE FROM users WHERE email = 'someone@cubesmart.com';"
+
+Changing a password directly by SQL isn't listed here on purpose — it needs
+a bcrypt hash, which is what `npm run reset-password` does correctly.
+
+
+RE-SEED THE DEFAULT CUBESMART ROSTER
+-------------------------------------
+
+  cd /opt/tesseract/app
+  npm run seed
+
+Idempotent — only adds accounts that don't already exist; never touches an
+existing password.
+
+
+RESET EVERY ACCOUNT TO THE SAME PASSWORD (bulk, non-interactive)
+------------------------------------------------------------------
+
+  cd /opt/tesseract/app
+  /usr/local/bin/node -e "
+    const D = require('better-sqlite3');
+    const bcrypt = require('bcryptjs');
+    const db = D('data/tesseract.db');
+    const hash = bcrypt.hashSync('NEW_SHARED_PASSWORD', 10);
+    const users = db.prepare('SELECT email FROM users').all();
+    const upd = db.prepare('UPDATE users SET password_hash = ?, must_change_password = 1 WHERE email = ?');
+    db.transaction(rows => { for (const r of rows) upd.run(hash, r.email); })(users);
+    console.log('Reset', users.length, 'accounts.');
+  "
+
+Replace NEW_SHARED_PASSWORD (10+ characters). must_change_password = 1 forces
+everyone to pick their own on next sign-in, same reasoning as the seed script.
+
+
+IMPORTANT: always call /usr/local/bin/node explicitly, never bare "node"
+----------------------------------------------------------------------------
+
+Prefer `sudo -u tesseract bash -lc "..."` for one-off commands — it gives you
+tesseract's own clean PATH. `sg tesseract -c "..."` is faster to type but
+inherits your own (deploy) shell's PATH instead, so bare `node` can resolve
+to whatever Node the calling (deploy) shell has on its PATH — which may be a different major version than the one the native
+better-sqlite3 addon here was compiled against. That mismatch doesn't fail
+cleanly: it aborts with a napi_fatal_error/"Aborted (core dumped)" crash.
+It does NOT touch the running app (systemd's ExecStart already uses the full
+path) and does NOT corrupt the database, but it's alarming and wastes time.
+Always use the full path: /usr/local/bin/node — as done in the examples above.
+
+
+IF A COMMAND ABOVE FAILS WITH "Permission denied"
+---------------------------------------------------
+
+Either log out and back in (picks up the "tesseract" group membership), or
+prefix the command to run as the tesseract user directly:
+
+  sudo -u tesseract bash -lc "cd /opt/tesseract/app && npm run create-account"

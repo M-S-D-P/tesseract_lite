@@ -4,7 +4,7 @@ Written for Ubuntu 22.04 LTS and 24.04 LTS. Every command is run as a user
 with `sudo`. Total time: about 20 minutes, most of it waiting on `npm ci`.
 
 The result: the app running under systemd as a dedicated service account,
-serving HTTPS directly on port 3005, starting automatically on reboot. There
+serving HTTPS directly on port 3006, starting automatically on reboot. There
 is no reverse proxy — Node terminates TLS itself.
 
 ---
@@ -30,7 +30,7 @@ certificate, or existing accounts.
 Different address or port:
 
 ```bash
-sudo BIND_HOST=10.2.0.28 PORT=3005 ./scripts/install-ubuntu.sh
+sudo BIND_HOST=10.2.0.28 PORT=3006 ./scripts/install-ubuntu.sh
 ```
 
 Afterwards there is exactly one thing left to do — put your Anthropic key in
@@ -52,7 +52,7 @@ understand or change a step.
 |---|---|---|
 | Ubuntu server, 2 vCPU / 4 GB RAM minimum | 4 GB is comfortable; the local embedder is the memory-hungry part | your infrastructure team |
 | An Anthropic API key with credit | every answer is a Claude call | console.anthropic.com → API keys |
-| The address users will reach it on | this deployment uses `10.2.0.28:3005` | your infrastructure team |
+| The address users will reach it on | this deployment uses `10.2.0.28:3006` | your infrastructure team |
 | GitHub token (optional) | only for **private** repositories | github.com → Settings → Developer settings |
 
 Disk: 20 GB is plenty for the app and a few large repositories. Indexing a
@@ -62,7 +62,7 @@ You do **not** need a database server — see step 3. PostgreSQL with pgvector
 is supported as an alternative vector store and is covered in step 4, but it
 is entirely optional.
 
-You do **not** need Apache or nginx. The app listens on 3005 with TLS of its
+You do **not** need Apache or nginx. The app listens on 3006 with TLS of its
 own. If your environment requires everything to sit behind Apache, there is an
 appendix at the end.
 
@@ -313,8 +313,8 @@ Fill in:
 ```ini
 ANTHROPIC_API_KEY=sk-ant-...
 AUTH_SECRET=<paste the output of: openssl rand -base64 48>
-APP_URL=https://10.2.0.28:3005
-PORT=3005
+APP_URL=https://10.2.0.28:3006
+PORT=3006
 HOSTNAME=0.0.0.0
 
 # Generated in the next step.
@@ -408,7 +408,7 @@ cs2026x
 ```
 
 So the rollout message is one sentence: *sign in at
-https://10.2.0.28:3005 with your work email and `cs2026x`, and pick your own
+https://10.2.0.28:3006 with your work email and `cs2026x`, and pick your own
 password when it asks.*
 
 **That shared password is safe only because it cannot be used for anything
@@ -481,7 +481,7 @@ scheme it picked:
 
 ```bash
 sudo journalctl -u tesseract -n 5 --no-pager
-# Tesseract Lite ready on https://0.0.0.0:3005
+# Tesseract Lite ready on https://0.0.0.0:3006
 ```
 
 If it says `http://` instead, the TLS paths in `.env.local` are missing or
@@ -489,19 +489,19 @@ wrong and it fell back to plain HTTP. Confirm it answers — `-k` because the
 certificate is self-signed:
 
 ```bash
-curl -kI https://localhost:3005/login     # expect HTTP/1.1 200 OK
+curl -kI https://localhost:3006/login     # expect HTTP/1.1 200 OK
 ```
 
 ### Open the port
 
 ```bash
 sudo ufw allow OpenSSH
-sudo ufw allow 3005/tcp
+sudo ufw allow 3006/tcp
 sudo ufw enable
 ```
 
 Ports above 1024 need no special privileges, which is why the service runs
-unprivileged and still binds 3005 directly.
+unprivileged and still binds 3006 directly.
 
 That is the whole deployment — carry on to step 11.
 
@@ -509,7 +509,7 @@ That is the whole deployment — carry on to step 11.
 
 ## 11. First login
 
-Open `https://10.2.0.28:3005` and sign in as `smallela@cubesmart.com` with
+Open `https://10.2.0.28:3006` and sign in as `smallela@cubesmart.com` with
 `cs2026x`. You will be asked to choose your own password before anything else
 becomes available.
 
@@ -593,14 +593,14 @@ Certbot's generated `tesseract-le-ssl.conf` still carries
 `RequestHeader set X-Forwarded-Proto "http"`. Change it to `https` and reload.
 
 **502 Proxy Error from Apache**
-The app is not running or not listening on 3005.
+The app is not running or not listening on 3006.
 `sudo systemctl status tesseract`, then `sudo journalctl -u tesseract -n 50`.
 
 ---
 
 ## Appendix: putting Apache in front
 
-**You do not need this.** The app serves HTTPS on 3005 by itself. Use this
+**You do not need this.** The app serves HTTPS on 3006 by itself. Use this
 only if policy requires everything behind the standard web server, or you want
 it on 443 without giving Node a privileged port.
 
@@ -643,8 +643,8 @@ sudo nano /etc/apache2/sites-available/tesseract.conf
     # flushpackets=on forwards each chunk as it arrives instead of buffering
     # the response. Answers stream token by token, so without it they land in
     # one lump after a long silence.
-    ProxyPass        / http://127.0.0.1:3005/ flushpackets=on timeout=600
-    ProxyPassReverse / http://127.0.0.1:3005/
+    ProxyPass        / http://127.0.0.1:3006/ flushpackets=on timeout=600
+    ProxyPassReverse / http://127.0.0.1:3006/
 
     # Compression buffers the stream and defeats the above.
     SetEnv no-gzip 1
@@ -703,6 +703,6 @@ sudo ufw allow 'Apache Full'
 sudo ufw enable
 ```
 
-`Apache Full` opens 80 and 443. Port 3005 is then reachable only from the machine itself.
+`Apache Full` opens 80 and 443. Port 3006 is then reachable only from the machine itself.
 
 ---

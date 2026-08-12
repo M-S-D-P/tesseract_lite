@@ -11,7 +11,7 @@ import http from "http";
 import https from "https";
 import next from "next";
 
-const port = Number(process.env.PORT || 3005);
+const port = Number(process.env.PORT || 3006);
 const hostname = process.env.HOSTNAME || "0.0.0.0";
 const certPath = process.env.TLS_CERT_PATH;
 const keyPath = process.env.TLS_KEY_PATH;

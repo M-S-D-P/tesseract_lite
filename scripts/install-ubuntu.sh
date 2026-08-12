@@ -12,15 +12,15 @@
 # will not overwrite .env.local, an existing certificate, or existing accounts.
 #
 # Override any of these on the command line:
-#   sudo BIND_HOST=10.2.0.28 PORT=3005 ./scripts/install-ubuntu.sh
+#   sudo BIND_HOST=10.2.0.28 PORT=3006 ./scripts/install-ubuntu.sh
 
 set -euo pipefail
 
 BIND_HOST="${BIND_HOST:-10.2.0.28}"     # address the app is reached on
-PORT="${PORT:-3005}"
+PORT="${PORT:-3006}"
 APP_USER="${APP_USER:-tesseract}"
 APP_DIR="${APP_DIR:-/opt/tesseract/app}"
-NODE_MAJOR="${NODE_MAJOR:-20}"
+NODE_MAJOR="${NODE_MAJOR:-22}"
 SERVICE="${SERVICE:-tesseract}"
 
 CERT_DIR="$APP_DIR/certs"
@@ -47,7 +47,10 @@ info "service user: $APP_USER"
 # ---------------------------------------------------------------- packages
 bold "1/9  System packages"
 export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq
+# `|| true`: this host carries unrelated third-party apt repos (pgdg, yarn)
+# that can fail here; apt-get update exits nonzero on any repo failure even
+# when the archives we actually need succeeded.
+apt-get update -qq || true
 # build-essential and python3 are required — better-sqlite3 compiles a native
 # module and fails without a C++ toolchain.
 apt-get install -y -qq curl ca-certificates gnupg git build-essential python3 openssl
@@ -59,10 +62,26 @@ if command -v node >/dev/null 2>&1 && \
    [ "$(node -p 'process.versions.node.split(".")[0]')" -ge "$NODE_MAJOR" ]; then
   info "already present: $(node --version)"
 else
-  curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash - >/dev/null
-  apt-get install -y -qq nodejs
+  # Installed from the official nodejs.org tarball rather than apt/nodesource:
+  # hosts with broken third-party apt repos make nodesource's setup script
+  # silently no-op (it exits 0 even when its internal `apt update` fails),
+  # leaving whatever Node major was already installed in place.
+  NODE_DIST_DIR="/usr/local/lib/nodejs"
+  NODE_VERSION="$(curl -fsSL "https://nodejs.org/dist/latest-v${NODE_MAJOR}.x/SHASUMS256.txt" \
+    | grep -o "node-v${NODE_MAJOR}\.[0-9]*\.[0-9]*-linux-x64" | head -1 | sed 's/-linux-x64//')"
+  [ -n "$NODE_VERSION" ] || die "could not determine latest Node $NODE_MAJOR release"
+  TARBALL="${NODE_VERSION}-linux-x64.tar.xz"
+  curl -fsSL "https://nodejs.org/dist/latest-v${NODE_MAJOR}.x/${TARBALL}" -o "/tmp/${TARBALL}"
+  mkdir -p "$NODE_DIST_DIR"
+  tar -xJf "/tmp/${TARBALL}" -C "$NODE_DIST_DIR"
+  rm -f "/tmp/${TARBALL}"
+  for bin in node npm npx corepack; do
+    ln -sf "$NODE_DIST_DIR/${NODE_VERSION}-linux-x64/bin/$bin" "/usr/local/bin/$bin"
+  done
+  hash -r
   info "installed $(node --version)"
 fi
+NODE_BIN="$(command -v node)"
 
 # ------------------------------------------------------------ service user
 bold "3/9  Service account"
@@ -150,6 +169,27 @@ chmod 600 "$ENV_FILE"
 bold "7/9  Install dependencies and build"
 info "this takes a few minutes"
 sudo -u "$APP_USER" bash -lc "cd '$APP_DIR' && npm ci --no-audit --no-fund" >/dev/null
+
+# better-sqlite3 ships prebuilt binaries for every platform bundled directly
+# inside its npm package (there's no install-time fetch to intercept), and
+# its loader (lib/binding.js) always prefers the bundled one over anything
+# built locally. On hosts with glibc older than 2.33 (e.g. Ubuntu 20.04's
+# 2.31) that bundled binary fails to load, so compile one locally and
+# delete the bundled prebuild to force the loader to fall back to it.
+CXX_BIN=g++
+if ! g++ -std=c++20 -x c++ -c /dev/null -o /dev/null 2>/dev/null; then
+  # better-sqlite3's source needs C++20; older g++ (e.g. Ubuntu 20.04's 9.x)
+  # doesn't recognize the flag, so bring in a newer compiler just for this.
+  apt-get install -y -qq g++-10
+  CXX_BIN=g++-10
+fi
+BETTER_SQLITE3_DIR="$APP_DIR/node_modules/better-sqlite3"
+sudo -u "$APP_USER" bash -lc \
+  "rm -rf '$BETTER_SQLITE3_DIR/build' && cd '$BETTER_SQLITE3_DIR' && CXX=$CXX_BIN npm run build-release" >/dev/null
+sudo -u "$APP_USER" bash -lc "rm -f '$BETTER_SQLITE3_DIR/prebuilds/linux-x64.node'"
+sudo -u "$APP_USER" bash -lc "cd '$APP_DIR' && node -e \"require('better-sqlite3')(':memory:')\"" \
+  || die "better-sqlite3 failed to load even after a local rebuild"
+
 sudo -u "$APP_USER" bash -lc "cd '$APP_DIR' && npm run build" >/dev/null
 info "built"
 
@@ -179,7 +219,8 @@ User=$APP_USER
 Group=$APP_USER
 WorkingDirectory=$APP_DIR
 Environment=NODE_ENV=production
-ExecStart=/usr/bin/node $APP_DIR/server.mjs
+EnvironmentFile=$ENV_FILE
+ExecStart=$NODE_BIN $APP_DIR/server.mjs
 Restart=always
 RestartSec=5
 

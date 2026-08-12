@@ -38,7 +38,7 @@ cd tesseract_lite
 sudo ./scripts/install-ubuntu.sh
 ```
 
-It serves HTTPS directly at `https://10.2.0.28:3005` when it finishes — no
+It serves HTTPS directly at `https://10.2.0.28:3006` when it finishes — no
 nginx or Apache in front. Add your `ANTHROPIC_API_KEY` to
 `/opt/tesseract/app/.env.local` and restart, and it is ready.
 
@@ -51,7 +51,7 @@ Local development:
 npm install
 cp .env.example .env.local     # add ANTHROPIC_API_KEY and AUTH_SECRET
 npm run seed                   # creates the org and its accounts
-npm run dev                    # http://localhost:3005
+npm run dev                    # http://localhost:3006
 ```
 
 ## Requirements

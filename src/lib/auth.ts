@@ -52,7 +52,14 @@ export async function setSessionCookie(user: SessionUser) {
   jar.set(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    // A Secure cookie is dropped by the browser on a plain HTTP connection,
+    // silently breaking login. NODE_ENV alone can't tell us that — it's
+    // "production" whether or not TLS is actually in front of the app (this
+    // deployment serves HTTP directly; some serve HTTPS themselves; others
+    // sit behind a reverse proxy that terminates TLS and forwards plain
+    // HTTP). APP_URL is the one setting that reflects what the browser
+    // actually connects with.
+    secure: (process.env.APP_URL || "").startsWith("https://"),
     maxAge: SESSION_DAYS * 24 * 60 * 60,
     path: "/",
   });
