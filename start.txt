@@ -1,9 +1,11 @@
 Tesseract Lite — operations cheat sheet
 ========================================
 
-App:        http://10.2.0.28:3006   (plain HTTP, no TLS)
-Install:    /opt/tesseract/app       (runs as the "tesseract" systemd service)
-Admin:      smallela@cubesmart.com
+App:          http://10.2.0.28:3006   (plain HTTP, no TLS)
+Install:      /opt/tesseract/app       (runs as the "tesseract" systemd service)
+Vector store: pgvector (Postgres 14, local, database "tesseract") — was
+              sqlite-vec before; see VECTOR STORE below.
+Admin:        smallela@cubesmart.com
 Current shared password (all 16 accounts, must be changed on first sign-in):
             Password123
 (Not the seed script's cs2026x default — these accounts were reset by hand.
@@ -25,6 +27,71 @@ START / STOP / STATUS
   sudo systemctl status tesseract
   sudo journalctl -u tesseract -f       # live logs
   sudo journalctl -u tesseract -n 50    # last 50 lines
+
+
+VECTOR STORE (pgvector)
+------------------------
+
+Chunks and embeddings live in Postgres, database "tesseract", owned by role
+"tesseract" (same host, port 5432). Document/resource metadata always stays
+in SQLite regardless of which vector backend is active — only chunks moved.
+
+  # First-time setup / re-run any time to confirm it's still in place:
+  sudo ./scripts/setup-pgvector.sh
+
+  # Check what's actually in it:
+  sudo -u postgres psql -d tesseract -c "SELECT COUNT(*) FROM chunks;"
+  sudo -u postgres psql -d tesseract -c "SELECT resource_id, COUNT(*) FROM chunks GROUP BY resource_id;"
+
+  # Confirm the app is using it: Admin -> Tuning shows "pgvector" and the
+  # embedding width, or:
+  curl -s http://localhost:3006/api/tuning/stats   # (needs an authenticated session cookie)
+
+PGVECTOR_URL lives in /opt/tesseract/app/.env.local. Switching it (set,
+unset, or point at a different database) requires a restart:
+  sudo systemctl restart tesseract
+
+Going back to sqlite-vec: remove PGVECTOR_URL from .env.local and restart.
+The old SQLite index is still there but stale for anything ingested while
+Postgres was in charge — re-sync those facets (Facets page, the refresh icon
+per row, or POST /api/resources/:id/resync).
+
+Switching TO pgvector (or re-running setup-pgvector.sh) does NOT
+automatically migrate existing sqlite-vec content — each facet has to be
+re-synced (or deleted and re-added) to actually land its chunks in Postgres.
+A resource that shows "ready" from before the switch can look fully synced
+while its content still only exists in the old SQLite index.
+
+If setup-pgvector.sh fails to find "postgresql-<version>-pgvector": PGDG's
+live apt repo (apt.postgresql.org) has stopped serving some older Ubuntu
+releases entirely — this host's is one of them, and the script already works
+around it by using the archive mirror (apt-archive.postgresql.org). If a
+future Ubuntu release path also needs it, the same sed swap in the script's
+"2/4" step is the fix.
+
+Backups: pgvector data is NOT covered by backing up data/ (that's SQLite,
+uploads, and repo clones only).
+  sudo -u postgres pg_dump -Fc tesseract -f /opt/tesseract/backups/tesseract-pg-$(date +%F).dump
+
+
+JOB QUEUE (background ingestion, one job at a time)
+------------------------------------------------------
+
+Resource ingestion, re-syncs, and eval generation/runs all go through one
+shared queue that processes a single job at a time (I/O heavy — see
+src/lib/jobs.ts). If nothing seems to be happening — Generate does nothing,
+a facet sits at "processing" forever — something else may be occupying that
+one slot, possibly stuck:
+
+  sqlite3 /opt/tesseract/app/data/tesseract.db "SELECT id, type, status FROM jobs;"
+
+A job stuck at "running" with no progress for a long time (check whether its
+resource's document count is still climbing) crashed without updating its
+own status, and will block every other job forever until either the service
+restarts (jobs mid-flight requeue automatically on boot) or you clear it by
+hand:
+
+  sqlite3 /opt/tesseract/app/data/tesseract.db "UPDATE jobs SET status='error', error='cleared manually' WHERE id='<job id>';"
 
 
 CREATE A NEW ACCOUNT (prompts for email + password)
