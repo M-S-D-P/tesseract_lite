@@ -1,0 +1,127 @@
+<mxfile host="app.diagrams.net" agent="tesseract" type="device">
+  <diagram id="sys-t" name="System design (technical)">
+    <mxGraphModel dx="1400" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1160" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="t" value="Tesseract Lite — system design" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=22;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="30" y="10" width="800" height="30" as="geometry"/>
+        </mxCell>
+        <mxCell id="ts" value="Layered view. Every table carries org_id; every facet carries an owner; every runtime source carries a creator." style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;fontSize=13;fontColor=#555555;" vertex="1" parent="1">
+          <mxGeometry x="30" y="42" width="1000" height="20" as="geometry"/>
+        </mxCell>
+        <mxCell id="L1" value="Client" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#8C8C8C;dashed=1;verticalAlign=top;fontStyle=1;fontSize=13;spacingTop=4;" vertex="1" parent="1">
+          <mxGeometry x="30" y="80" width="1500" height="110" as="geometry"/>
+        </mxCell>
+        <mxCell id="c_ui" value="Browser — React 19 / Next App Router&#10;chat · facets · live runtime · pipeline · tuning · admin" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="50" y="115" width="420" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c_sse" value="EventSource (SSE)&#10;/api/runtime/live · chat token stream" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="490" y="115" width="300" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="c_mach" value="Machine clients&#10;POST /api/runtime/ingest with X-Tesseract-Token&#10;(exempt from the session check — the caller is not a browser)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="810" y="115" width="700" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="L2" value="Edge — proxy.ts (runs before every route)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#8C8C8C;dashed=1;verticalAlign=top;fontStyle=1;fontSize=13;spacingTop=4;" vertex="1" parent="1">
+          <mxGeometry x="30" y="205" width="1500" height="95" as="geometry"/>
+        </mxCell>
+        <mxCell id="p_pub" value="PUBLIC_PATHS&#10;login · setup · signup&#10;invite · /api/auth&#10;/api/runtime/ingest" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="50" y="240" width="270" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="p_jwt" value="Session JWT (jose, HS256)&#10;AUTH_SECRET · 30d · cookie" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="340" y="240" width="290" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="p_adm" value="ADMIN_PATHS → redirect members to /&#10;/admin · /pipeline · /tuning     ( /live deliberately NOT here — it is a developer surface )" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="650" y="240" width="600" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="p_pwd" value="must_change_password&#10;read from the DB per request,&#10;not from the token" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1270" y="240" width="240" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="L3" value="Application — API routes" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#8C8C8C;dashed=1;verticalAlign=top;fontStyle=1;fontSize=13;spacingTop=4;" vertex="1" parent="1">
+          <mxGeometry x="30" y="315" width="1500" height="105" as="geometry"/>
+        </mxCell>
+        <mxCell id="r0" value="auth&#10;login · invite · setup&#10;password · MS Entra SSO" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="50" y="350" width="220" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="r1" value="resources (facets)&#10;CRUD · resync · branches&#10;ownership enforced in loadResource" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="280" y="350" width="300" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="r2" value="threads / completion&#10;SSE token stream · attachments" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="590" y="350" width="250" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="r3" value="runtime&#10;sources · live · summary · coverage&#10;requests · analyze · metaprogramming" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="850" y="350" width="330" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="r4" value="admin / tuning / eval&#10;settings · users · models · MCP · stats" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1190" y="350" width="320" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="L4" value="Domain services  (src/lib)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#8C8C8C;dashed=1;verticalAlign=top;fontStyle=1;fontSize=13;spacingTop=4;" vertex="1" parent="1">
+          <mxGeometry x="30" y="435" width="1500" height="215" as="geometry"/>
+        </mxCell>
+        <mxCell id="d_chat" value="chat/&#10;completion.ts — tool loop, max 6 iterations,&#10;fallback to plain RAG if the loop cannot finish&#10;providers.ts — Anthropic only, effort per tier" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="50" y="470" width="330" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="d_rag" value="rag/&#10;ingest · extract · chunk&#10;embeddings (local | openai)&#10;local (sqlite-vec) · local-pg (pgvector)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="395" y="470" width="300" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="d_rt" value="runtime/&#10;parser — Rails log state machine&#10;store — persist, prune, read, THE JOIN&#10;sources — one listener per source, owned" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="710" y="470" width="330" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="d_gr" value="rails-graph&#10;static model/route/&#10;controller extraction" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1055" y="470" width="220" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="d_mis" value="jobs (durable queue)&#10;filegen · eval · mcp&#10;github · confluence&#10;metrics · settings" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1290" y="470" width="220" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="x_ten" value="Cross-cutting: multi-tenancy (org_id on every table) · facet ownership (private | org) ·&#10;per-developer runtime sources · per-org settings with defaults · metrics on every model call" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="50" y="575" width="1460" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="L5" value="Persistence" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#8C8C8C;dashed=1;verticalAlign=top;fontStyle=1;fontSize=13;spacingTop=4;" vertex="1" parent="1">
+          <mxGeometry x="30" y="665" width="1500" height="150" as="geometry"/>
+        </mxCell>
+        <mxCell id="s_sq" value="SQLite (WAL) — data/tesseract.db&#10;orgs · users · invites · threads · messages · resources · documents · chunks&#10;jobs · metrics · eval_* · kg_entities · kg_edges · runtime_sources · runtime_requests · runtime_queries" style="shape=cylinder3;boundedShape=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="50" y="700" width="700" height="95" as="geometry"/>
+        </mxCell>
+        <mxCell id="s_vec" value="vec_chunks&#10;vec0(float[dim])&#10;width read back off&#10;the table definition" style="shape=cylinder3;boundedShape=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="765" y="700" width="230" height="95" as="geometry"/>
+        </mxCell>
+        <mxCell id="s_pg" value="pgvector (optional)&#10;chunks vector(dim)&#10;+ HNSW&#10;PGVECTOR_URL" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;dashed=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1010" y="700" width="220" height="95" as="geometry"/>
+        </mxCell>
+        <mxCell id="s_fs" value="Filesystem&#10;data/repos · data/uploads&#10;data/certs" style="shape=cylinder3;boundedShape=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1245" y="700" width="265" height="95" as="geometry"/>
+        </mxCell>
+        <mxCell id="L6" value="Integrations" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#8C8C8C;dashed=1;verticalAlign=top;fontStyle=1;fontSize=13;spacingTop=4;" vertex="1" parent="1">
+          <mxGeometry x="30" y="830" width="1500" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="i_an" value="Anthropic (required)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="50" y="862" width="260" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="i_oa" value="OpenAI — embeddings only, optional" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;dashed=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="325" y="862" width="300" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="i_gh" value="GitHub" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="640" y="862" width="180" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="i_cf" value="Confluence" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="835" y="862" width="180" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="i_mc" value="MCP servers" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;dashed=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1030" y="862" width="180" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="i_fms" value="FMS (or any Rails app) — streams the log it already writes" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1225" y="862" width="285" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="q_flow" value="Request lifecycle for a question&#10;1. proxy verifies the session and the password-change gate&#10;2. /api/threads/[id]/completion opens an SSE stream&#10;3. resolveModel(tier) → Claude model + reasoning effort&#10;4. tools offered conditionally: retrieval if chunks exist, graph if the&#10;    graph has data, runtime if THIS developer&#39;s sources have traffic&#10;5. tool loop executes locally; citations accumulate&#10;6. answer, citations and any generated file stream back; metrics recorded" style="shape=note;whiteSpace=wrap;html=1;fillColor=#FFF9B2;strokeColor=#D6B656;size=14;fontSize=10;align=left;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="30" y="940" width="470" height="180" as="geometry"/>
+        </mxCell>
+        <mxCell id="q_scale" value="Deliberate constraints&#10;· One process, one box. SQLite allows one writer, so concurrent&#10;   ingestions queue — move to pgvector when that hurts.&#10;· Rolling 50k request window, pruned automatically.&#10;· Jobs are durable rows, so a restart resumes rather than loses.&#10;· Listeners are re-bound at boot from the sources table.&#10;· A port can be claimed once: listeners bind on THIS host." style="shape=note;whiteSpace=wrap;html=1;fillColor=#FFF9B2;strokeColor=#D6B656;size=14;fontSize=10;align=left;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="520" y="940" width="470" height="180" as="geometry"/>
+        </mxCell>
+        <mxCell id="q_sec" value="Security posture&#10;· TLS terminated in Node; certificate private key 0600.&#10;· Passwords bcrypt; seeded and admin-reset accounts can reach exactly&#10;   one endpoint until the owner sets their own.&#10;· No mail server by design — invite links are copied by an administrator.&#10;· Facets private by default; enforced in retrieval, not just in the list.&#10;· Machine ingest uses its own token, never a session." style="shape=note;whiteSpace=wrap;html=1;fillColor=#FFF9B2;strokeColor=#D6B656;size=14;fontSize=10;align=left;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="1010" y="940" width="500" height="180" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

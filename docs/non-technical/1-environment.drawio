@@ -1,0 +1,49 @@
+<mxfile host="app.diagrams.net" agent="tesseract" type="device">
+  <diagram id="env-n" name="Where everything lives">
+    <mxGraphModel dx="1400" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="t" value="Where everything lives" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=22;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="20" width="900" height="32" as="geometry"/>
+        </mxCell>
+        <mxCell id="ts" value="One server, inside our own network. Nothing new is installed into the storage system." style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;fontSize=13;fontColor=#555555;" vertex="1" parent="1">
+          <mxGeometry x="40" y="56" width="900" height="20" as="geometry"/>
+        </mxCell>
+        <mxCell id="band" value="INSIDE OUR NETWORK  —  our code, our documents and our records stay here" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#B3B3B3;dashed=1;verticalAlign=top;fontStyle=1;fontSize=16;spacingTop=6;" vertex="1" parent="1">
+          <mxGeometry x="40" y="100" width="1000" height="620" as="geometry"/>
+        </mxCell>
+        <mxCell id="ppl" value="Our team&#10;&#10;They open a web page.&#10;Nothing to install, nothing to learn." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E6F2E6;strokeColor=#82B366;fontSize=15;arcSize=12;" vertex="1" parent="1">
+          <mxGeometry x="80" y="160" width="260" height="150" as="geometry"/>
+        </mxCell>
+        <mxCell id="fms" value="Our storage system (FMS)&#10;&#10;Keeps running exactly as it does today.&#10;It already writes a diary of what it does —&#10;we simply read a copy of that diary." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#666666;fontSize=15;arcSize=12;" vertex="1" parent="1">
+          <mxGeometry x="80" y="360" width="260" height="190" as="geometry"/>
+        </mxCell>
+        <mxCell id="asst" value="The assistant&#10;(one server)&#10;&#10;· Holds a searchable copy of our code,&#10;   documents and wiki pages&#10;· Holds the notes from FMS&#39;s diary&#10;· Answers questions and produces files&#10;&#10;Restarts by itself. No separate database&#10;to run or back up." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=15;verticalAlign=middle;arcSize=12;" vertex="1" parent="1">
+          <mxGeometry x="440" y="190" width="340" height="300" as="geometry"/>
+        </mxCell>
+        <mxCell id="safe" value="What never leaves&#10;&#10;Our source code, our documents&#10;and our database stay on this server." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontSize=15;fontStyle=1;arcSize=12;" vertex="1" parent="1">
+          <mxGeometry x="440" y="530" width="340" height="110" as="geometry"/>
+        </mxCell>
+        <mxCell id="ai" value="Claude&#10;(the AI service)&#10;&#10;Receives only the few paragraphs&#10;needed to answer the question in&#10;front of it — never our database,&#10;never the whole codebase." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontSize=15;arcSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1110" y="240" width="300" height="230" as="geometry"/>
+        </mxCell>
+        <mxCell id="out" value="OUTSIDE" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#B3B3B3;dashed=1;verticalAlign=top;fontStyle=1;fontSize=16;spacingTop=6;" vertex="1" parent="1">
+          <mxGeometry x="1080" y="100" width="360" height="450" as="geometry"/>
+        </mxCell>
+        <mxCell id="note" value="Practical points for the conversation&#10;&#10;·  One machine. If it reboots, it comes back on its own.&#10;·  Setting it up is a single command; re-running it never overwrites&#10;    accounts, settings or certificates.&#10;·  The storage system is untouched: no new software inside it, no code&#10;    change, no restart required. We read a copy of a log it already keeps.&#10;·  Each person sees only what they added, plus anything deliberately&#10;    shared with the team." style="shape=note;whiteSpace=wrap;html=1;fillColor=#FFF9B2;strokeColor=#D6B656;size=18;fontSize=13;align=left;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="40" y="760" width="1000" height="190" as="geometry"/>
+        </mxCell>
+        <mxCell id="n1" value="ask questions&#10;get answers" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=13;endArrow=blockThin;endFill=1;strokeWidth=2;" edge="1" parent="1" source="ppl" target="asst">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="n2" value="a copy of its diary" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=13;endArrow=blockThin;endFill=1;strokeWidth=2;" edge="1" parent="1" source="fms" target="asst">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="n3" value="just the relevant&#10;paragraphs" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=13;endArrow=blockThin;endFill=1;strokeWidth=2;" edge="1" parent="1" source="asst" target="ai">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
