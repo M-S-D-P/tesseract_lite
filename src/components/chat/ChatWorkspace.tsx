@@ -100,6 +100,8 @@ export default function ChatWorkspace({ threadId }: { threadId: string | null })
   const [historyLoaded, setHistoryLoaded] = useState(false);
   // Thread ids created by this component for a message already on screen.
   const selfCreatedRef = useRef<string | null>(null);
+  // A handed-off question must fire once, not on every re-render.
+  const autoAskedRef = useRef(false);
 
   // --- facets rail
   const [facets, setFacets] = useState<Facet[]>([]);
@@ -192,6 +194,25 @@ export default function ChatWorkspace({ threadId }: { threadId: string | null })
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages, streaming]);
+
+  // /live hands off a question here: it creates the thread server-side with the
+  // runtime evidence already composed, then navigates. We send it exactly once.
+  useEffect(() => {
+    if (!threadId || autoAskedRef.current || streaming) return;
+    const raw = sessionStorage.getItem("tesseract:autoAsk");
+    if (!raw) return;
+    try {
+      const pending = JSON.parse(raw) as { threadId: string; message: string };
+      if (pending.threadId !== threadId) return;
+      sessionStorage.removeItem("tesseract:autoAsk");
+      autoAskedRef.current = true;
+      setInput(pending.message);
+      // Let the composer state settle before firing.
+      setTimeout(() => sendRef.current?.(pending.message), 60);
+    } catch {
+      sessionStorage.removeItem("tesseract:autoAsk");
+    }
+  }, [threadId, streaming]);
 
   const ensureThread = useCallback(async (): Promise<string> => {
     if (threadId) return threadId;

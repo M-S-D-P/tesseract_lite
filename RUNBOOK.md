@@ -10,6 +10,8 @@ For whoever administers the instance. Installation is in
 | | Members (the 15 accounts) | Administrator |
 |---|---|---|
 | Chat, facet scoping, file downloads | yes | yes |
+| Live runtime — connect an app, trace its traffic | yes | yes |
+| See or manage someone else's runtime source | no | yes |
 | Add content, and sync or delete their own | yes | yes |
 | See someone else's private facet | no | no |
 | Sync or delete someone else's facet | no | yes |
@@ -20,6 +22,11 @@ For whoever administers the instance. Installation is in
 
 Administrator is a per-account flag, not a separate login. Grant it in
 **Admin → Users & invites**.
+
+**Live runtime is deliberately open to members.** It is a developer surface:
+you point it at the application you are running, watch the log it already
+writes, and map what it did back to the source. Locking that to administrators
+would put it out of reach of the people it is for.
 
 ---
 
@@ -82,6 +89,146 @@ Alternatively add them to `MEMBERS` in `scripts/seed.mjs` and re-run
 
 **Admin → Users & invites → Delete**. Their chat history goes with them;
 indexed content is owned by the organization and stays.
+
+---
+
+## Live runtime — the static analysis gap
+
+**Why this exists.** Reading Rails source does not tell you what Rails will do.
+Methods are manufactured at boot and on demand — concerns, generated
+association and attribute methods, scopes, delegation, `method_missing` — so a
+method can execute, issue SQL, and appear nowhere in the code you read. No
+amount of model cleverness fixes that: the information is simply not in the
+file. It is in the log.
+
+So the app reads the log. A running application streams the log it already
+writes; nothing is installed into it and no code changes.
+
+**What this is not.** It is not an APM. Datadog already does request streams,
+latency and error rates. What an APM structurally cannot do is compare traffic
+against the *source*, because it never parsed the source. That comparison is
+the whole point.
+
+### Connect an application
+
+**Live runtime → Add source.** Two transports:
+
+- **TCP port** — the app pipes into a port you bind:
+  `tail -f log/development.log | nc localhost 9100`
+- **Log file** — give an absolute path and it is tailed, so the application
+  needs no change at all. Only appended bytes are read, and a shrinking file is
+  treated as rotation rather than silently stopping capture.
+
+**Ports belong to you.** Add as many as you like — one per app, or per branch.
+A source is private to the developer who created it: only your stream, your
+summary, your coverage and your questions see its traffic. Administrators can
+see all of them so abandoned ones can be cleaned up.
+
+A port can still only be claimed once, because the listener binds on the
+Tesseract server rather than on your machine. Your app pipes to whichever port
+you chose; if it is taken, pick another.
+
+### Link it to its code
+
+The same form asks for **its indexed codebase** — pick an existing facet, or
+choose **Add a facet** and give a repository URL and branch right there.
+Indexing starts in the background and the source is linked immediately.
+
+Without this link there is no static side to compare against, and the panels
+below will say so rather than guess.
+
+### Metaprogramming: what actually ran
+
+Every query Rails logs carries a `↳ file:line:in 'method'` line. The methods
+that genuinely executed are each checked against the **indexed source of the
+very file they claim to come from**, giving three outcomes:
+
+| Verdict | Meaning |
+|---|---|
+| **Generated** | The file is indexed and the method is not in it. It was produced at runtime. This is the evidence. |
+| Defined | Found in the source. Static analysis would have caught it. |
+| Not indexed | That file is not in the corpus, so **no claim is made either way**. |
+
+That third row matters. A file we have not read is not evidence of
+metaprogramming, and it is never counted as such — it is reported separately so
+you can index the repository and get a real answer.
+
+Rails also announces some metaprogramming outright (`Creating scope :open.
+Overwriting existing method Lead.open.`); those are captured verbatim as they
+happen, not inferred.
+
+**What it does not catch.** A generated method that never touches the database
+produces no `↳` line, so it is invisible here. This finds dynamically generated
+code *on the paths your traffic actually exercised* — which is the honest claim,
+and a far stronger one than reasoning about what Rails usually generates.
+
+### Proving it, on demand
+
+The claim is testable, and the test ships with the app. It indexes a fixture
+whose correct answer is known in advance — a concern that manufactures
+`paid_through_for_invoiceable` via `define_method`, so the method never appears
+in `ledger.rb` yet issues SQL — streams a matching log, and holds the system to
+the expected verdicts:
+
+```bash
+node scripts/verify-metaprogramming.mjs \
+  --base http://localhost:3005 --email you@example.com --password '...'
+```
+
+It asserts that the generated method is found, that methods genuinely written
+in the source are *not* misreported as generated, that an unindexed file is
+refused rather than called metaprogramming, and that the scope overwrite Rails
+announced is captured verbatim. It cleans up after itself and exits non-zero on
+failure, so it can run in CI. Pass `--keep` to leave the fixture in place and
+look at it in the UI.
+
+### Coverage against the source
+
+The same join answers what an APM cannot: which controllers in the codebase are
+actually exercised, which exist in source but serve no traffic (deprecation
+candidates), and which serve traffic while absent from static analysis entirely
+— engine mounts and metaprogrammed controllers.
+
+### Ask about a request
+
+Click any request. The drawer shows its N+1 verdict, the metaprogramming Rails
+announced while it ran, and its queries grouped by the source line that issued
+them. Six presets turn it into a question — trace through the code, why is it
+slow, what metaprogramming ran, blast radius of these tables, static vs runtime
+gap, document this flow — or type your own.
+
+The prompt carries the runtime evidence with it, and the metaprogramming preset
+requires the model to call the tool and answer from that list rather than from
+general knowledge of Rails. If the list is empty it is told to say so.
+
+### Demo and test input
+
+```bash
+# Traffic against controllers that exist in the indexed Discourse source
+node scripts/simulate-rails-log.mjs --app discourse | nc localhost 9100
+
+# FMS-shaped traffic instead
+node scripts/simulate-rails-log.mjs --app fms | nc localhost 9100
+
+# Highest fidelity: replay a real exported log with its original pacing
+node scripts/replay-rails-log.mjs log/development.log --speed 4 | nc localhost 9100
+```
+
+Copying a log text file out of a VDI is far more practical than exporting a
+database, which is why the replayer exists.
+
+### Machine ingestion
+
+For an app that cannot open a socket — a container, CI, another host — rotate a
+token in **Admin → Tuning → Live runtime** and POST the raw log:
+
+```bash
+curl -X POST https://HOST:3005/api/runtime/ingest \
+  -H "X-Tesseract-Token: TOKEN" --data-binary @log/development.log
+```
+
+That endpoint authenticates on the token alone, not a session, and its traffic
+is org-wide rather than owned by one developer.
 
 ---
 

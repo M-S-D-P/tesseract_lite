@@ -147,6 +147,80 @@ CREATE TABLE IF NOT EXISTS generated_files (
   mime TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+-- Configured connections to locally running applications. Each source owns a
+-- listener (a TCP port we bind, or a log file we tail) and optionally points at
+-- the indexed codebase it belongs to, so runtime observations line up with the
+-- right source tree.
+--
+-- These three tables arrive complete rather than through ALTER migrations: no
+-- Lite database has ever had them, so there is nothing to migrate from.
+CREATE TABLE IF NOT EXISTS runtime_sources (
+  id TEXT PRIMARY KEY,
+  org_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'port',   -- port | file
+  port INTEGER,
+  file_path TEXT,
+  app_url TEXT,                        -- where the app itself is served, for reference
+  resource_id TEXT,                    -- the indexed repo this app's code lives in
+  -- A developer owns the ports they add: they are the only one who sees and
+  -- manages them, so several people can stream from their own machines without
+  -- tripping over each other. NULL predates ownership.
+  created_by TEXT,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  status TEXT NOT NULL DEFAULT 'stopped', -- listening | tailing | stopped | error
+  error TEXT,
+  requests_seen INTEGER NOT NULL DEFAULT 0,
+  last_seen_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_runtime_sources_org ON runtime_sources(org_id);
+
+-- Live runtime telemetry streamed from a running Rails app (log listener or
+-- HTTP ingest). Rolling window; the durable signal is folded into kg_*.
+CREATE TABLE IF NOT EXISTS runtime_requests (
+  id TEXT PRIMARY KEY,
+  org_id TEXT NOT NULL,
+  source TEXT NOT NULL DEFAULT 'log',
+  source_id TEXT,                      -- which configured source produced it
+  method TEXT,
+  path TEXT,
+  controller TEXT,
+  action TEXT,
+  format TEXT,
+  status INTEGER,
+  duration_ms REAL,
+  view_ms REAL,
+  db_ms REAL,
+  allocations INTEGER,
+  sql_count INTEGER NOT NULL DEFAULT 0,
+  tables TEXT NOT NULL DEFAULT '[]',
+  n_plus_one TEXT,
+  metaprogramming TEXT NOT NULL DEFAULT '[]',
+  error_class TEXT,
+  error_message TEXT,
+  started_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_runtime_req_org ON runtime_requests(org_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_runtime_req_ctrl ON runtime_requests(org_id, controller, action);
+CREATE TABLE IF NOT EXISTS runtime_queries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  org_id TEXT NOT NULL,
+  request_id TEXT,
+  fingerprint TEXT NOT NULL,
+  sql TEXT NOT NULL,
+  tables TEXT NOT NULL DEFAULT '[]',
+  duration_ms REAL,
+  cached INTEGER NOT NULL DEFAULT 0,
+  -- The "↳ app/models/x.rb:12" line Rails prints under each query: what turns
+  -- "a query ran" into "this line ran it".
+  source TEXT,
+  source_method TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_runtime_q_org ON runtime_queries(org_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_runtime_q_fp ON runtime_queries(org_id, fingerprint);
 -- Evaluation harness: question sets, runs pinned to a config, per-question results.
 CREATE TABLE IF NOT EXISTS eval_sets (
   id TEXT PRIMARY KEY,
@@ -275,6 +349,8 @@ export function getDb(): Database.Database {
     "ALTER TABLE resources ADD COLUMN visibility TEXT NOT NULL DEFAULT 'org'",
     // Evaluation is scored against one person's visible corpus.
     "ALTER TABLE eval_runs ADD COLUMN created_by TEXT",
+    // Runtime sources belong to the developer who added them.
+    "ALTER TABLE runtime_sources ADD COLUMN created_by TEXT",
     // Multi-tenancy
     "ALTER TABLE users ADD COLUMN org_id TEXT",
     "ALTER TABLE invites ADD COLUMN org_id TEXT",

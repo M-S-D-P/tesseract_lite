@@ -26,6 +26,7 @@ export type ProviderRunContext = {
   images: { mime: string; dataB64: string }[];
   enableKbTool: boolean;
   enableGraphTool: boolean;
+  enableRuntimeTool?: boolean;
   executeTool: (name: string, args: Record<string, unknown>) => Promise<string>;
   emitDelta: (text: string) => void;
   emitTool: (name: string) => void;
@@ -38,6 +39,8 @@ const KB_TOOL_DESCRIPTION =
   "Search the organization's knowledge base (documents, GitHub repositories, Confluence pages, uploaded files). Use whenever the answer may depend on internal knowledge, code, or attached files.";
 const GRAPH_TOOL_DESCRIPTION =
   "Query the structured application graph extracted from ingested Rails codebases: models, associations, DB tables, routes/APIs, controllers, jobs, services — with file provenance. Prefer over text search for questions about app structure or relationships.";
+const RUNTIME_TOOL_DESCRIPTION =
+  "Query LIVE runtime telemetry streamed from the running Rails application: request volume, slowest controller actions, failing endpoints, N+1 query patterns, hottest SQL, and recent requests. action=coverage compares the indexed source against observed traffic: which controllers are exercised, which serve no traffic, and which serve traffic without appearing in the source at all. action=metaprogramming lists methods that DID execute but are not defined in the source file they came from — Rails generates methods at runtime (concerns, generated association and attribute methods, scopes, delegation, method_missing), so this is evidence reading the code cannot produce. ALWAYS call action=metaprogramming when asked what is dynamically generated, what static analysis would miss, or how metaprogramming is handled — never answer those from general knowledge of Rails.";
 
 const KB_TOOL_SCHEMA = {
   type: "object",
@@ -54,6 +57,19 @@ const GRAPH_TOOL_SCHEMA = {
       enum: ["model", "table", "controller", "route", "job", "service", "class", "function", "trace"],
     },
     name: { type: "string" },
+  },
+  required: ["action"],
+} as const;
+
+const RUNTIME_TOOL_SCHEMA = {
+  type: "object",
+  properties: {
+    action: {
+      type: "string",
+      enum: ["summary", "recent", "coverage", "metaprogramming"],
+    },
+    minutes: { type: "number" },
+    limit: { type: "number" },
   },
   required: ["action"],
 } as const;
@@ -98,6 +114,13 @@ export async function runAnthropic(ctx: ProviderRunContext): Promise<ProviderRes
       name: "query_app_graph",
       description: GRAPH_TOOL_DESCRIPTION,
       input_schema: GRAPH_TOOL_SCHEMA,
+    });
+  }
+  if (ctx.enableRuntimeTool) {
+    tools.push({
+      name: "query_runtime",
+      description: RUNTIME_TOOL_DESCRIPTION,
+      input_schema: RUNTIME_TOOL_SCHEMA,
     });
   }
   tools.push({

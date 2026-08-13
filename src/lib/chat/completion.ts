@@ -7,6 +7,14 @@ import { recordMetric } from "../metrics";
 import { searchLocal, hasLocalChunks } from "../rag/local";
 import { graphHasData, queryAppGraph } from "../rails-graph";
 import {
+  hasRuntimeData,
+  runtimeSummary,
+  runtimeCoverage,
+  recentRequests,
+  metaprogrammingReport,
+} from "../runtime/store";
+import { visibleSourceIds } from "../runtime/sources";
+import {
   generateFile,
   type FileSpec,
 } from "../filegen";
@@ -165,6 +173,26 @@ export async function runCompletion(opts: {
         return JSON.stringify({ error: (e as Error).message });
       }
     }
+    if (name === "query_runtime") {
+      const action = String(args.action ?? "summary");
+      // Scoped to the asker's own listeners: you reason about the app YOU are
+      // running, not whatever a colleague happens to be streaming.
+      const sources = visibleSourceIds(opts.orgId, opts.userId);
+      if (action === "recent") {
+        return JSON.stringify(
+          recentRequests(opts.orgId, Number(args.limit) || 30, sources)
+        );
+      }
+      if (action === "coverage") {
+        return JSON.stringify(runtimeCoverage(opts.orgId, sources));
+      }
+      if (action === "metaprogramming") {
+        return JSON.stringify(await metaprogrammingReport(opts.orgId, sources));
+      }
+      return JSON.stringify(
+        runtimeSummary(opts.orgId, Number(args.minutes) || 60, sources)
+      );
+    }
     if (name === "query_app_graph") {
       return JSON.stringify(
         queryAppGraph(opts.orgId, {
@@ -279,6 +307,10 @@ export async function runCompletion(opts: {
       images,
       enableKbTool: hasChunks,
       enableGraphTool: graphHasData(opts.orgId),
+      enableRuntimeTool: hasRuntimeData(
+        opts.orgId,
+        visibleSourceIds(opts.orgId, opts.userId)
+      ),
       executeTool: executeSharedTool,
       emitDelta: (text) => {
         fullText += text;

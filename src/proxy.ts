@@ -7,12 +7,18 @@ const PUBLIC_PATHS = [
   /^\/signup/,
   /^\/invite\//,
   /^\/api\/auth\//,
+  // Log ingestion is called by a machine, not a browser: it authenticates with
+  // a shared token of its own, so a session check here would only lock it out.
+  /^\/api\/runtime\/ingest/,
   /^\/favicon/,
   /^\/_next\//,
 ];
 
 // Operator surfaces. Members are redirected to chat rather than shown a page
 // whose API calls would all 403 — the nav hides these, this closes the URL.
+// /live is deliberately absent: it is where a developer connects the app they
+// are running and traces its traffic back to the source, so it belongs to
+// everyone who writes code here.
 const ADMIN_PATHS = [/^\/admin/, /^\/pipeline/, /^\/tuning/];
 
 export async function proxy(request: NextRequest) {

@@ -11,6 +11,7 @@ import {
   LogOut,
   MessageSquare,
   Moon,
+  Radio,
   Shield,
   SlidersHorizontal,
   SunMedium,
@@ -68,8 +69,12 @@ export default function TopBar({ center }: { center?: React.ReactNode }) {
       <nav className="flex items-center gap-0.5">
         {navItem("/", <MessageSquare className="size-4" />, "Chat")}
         {navItem("/facets", <Layers className="size-4" />, "Facets")}
+        {/* Live runtime is a developer surface, not an operator one: point it at
+            the app you are running, watch the log, and map what it did back to
+            the source. Everyone gets it. */}
+        {navItem("/live", <Radio className="size-4" />, "Live runtime")}
         {/* Pipeline, tuning and admin are operator surfaces — members get
-            chat and facets only. */}
+            chat, facets and live runtime only. */}
         {me?.role === "admin" && (
           <>
             {navItem("/pipeline", <Activity className="size-4" />, "Pipeline")}
