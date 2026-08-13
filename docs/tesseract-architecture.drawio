@@ -1,0 +1,402 @@
+<mxfile host="app.diagrams.net" agent="tesseract" type="device">
+  <diagram id="env-1" name="1 - Environment">
+    <mxGraphModel dx="1400" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1250" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="g_users" value="Engineers" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#8C8C8C;dashed=1;verticalAlign=top;fontStyle=1;fontSize=13;spacingTop=4;" vertex="1" parent="1">
+          <mxGeometry x="40" y="60" width="210" height="200" as="geometry"/>
+        </mxCell>
+        <mxCell id="g_fms" value="FMS application host (Rails 6.1)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#8C8C8C;dashed=1;verticalAlign=top;fontStyle=1;fontSize=13;spacingTop=4;" vertex="1" parent="1">
+          <mxGeometry x="40" y="300" width="210" height="260" as="geometry"/>
+        </mxCell>
+        <mxCell id="g_srv" value="Ubuntu 22.04 LTS server  ·  10.2.0.28  ·  systemd" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#8C8C8C;dashed=1;verticalAlign=top;fontStyle=1;fontSize=13;spacingTop=4;" vertex="1" parent="1">
+          <mxGeometry x="300" y="40" width="800" height="1010" as="geometry"/>
+        </mxCell>
+        <mxCell id="g_next" value="Next.js 16.3 application (single Node process)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#8C8C8C;dashed=1;verticalAlign=top;fontStyle=1;fontSize=13;spacingTop=4;" vertex="1" parent="1">
+          <mxGeometry x="330" y="260" width="740" height="320" as="geometry"/>
+        </mxCell>
+        <mxCell id="g_data" value="/opt/tesseract/app/data   (the only writable path)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#8C8C8C;dashed=1;verticalAlign=top;fontStyle=1;fontSize=13;spacingTop=4;" vertex="1" parent="1">
+          <mxGeometry x="330" y="600" width="740" height="250" as="geometry"/>
+        </mxCell>
+        <mxCell id="g_ext" value="External services" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#8C8C8C;dashed=1;verticalAlign=top;fontStyle=1;fontSize=13;spacingTop=4;" vertex="1" parent="1">
+          <mxGeometry x="1150" y="60" width="380" height="560" as="geometry"/>
+        </mxCell>
+        <mxCell id="g_opt" value="Optional / appendix" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#8C8C8C;dashed=1;verticalAlign=top;fontStyle=1;fontSize=13;spacingTop=4;" vertex="1" parent="1">
+          <mxGeometry x="1150" y="660" width="380" height="250" as="geometry"/>
+        </mxCell>
+        <mxCell id="browser" value="Browsers&#10;HTTPS to :3005&#10;self-signed cert (IP in SAN)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="60" y="105" width="170" height="130" as="geometry"/>
+        </mxCell>
+        <mxCell id="fms_log" value="log/development.log&#10;written by Rails already" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#666666;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="60" y="345" width="170" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="fms_pipe" value="tail -f log/development.log&#10;| nc 10.2.0.28 9100&#10;&#10;no gem, no code change" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="60" y="445" width="170" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="systemd" value="systemd unit  tesseract&#10;Restart=always · NoNewPrivileges&#10;ReadWritePaths=/opt/tesseract/app" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="330" y="85" width="400" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="servermjs" value="server.mjs   —   Node 20&#10;terminates TLS in-process (TLS_CERT_PATH / TLS_KEY_PATH), listens 0.0.0.0:3005&#10;requestTimeout=0 so streamed answers and large uploads survive" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="330" y="175" width="740" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="proxy" value="proxy.ts&#10;session JWT verify&#10;admin gating:&#10;/admin /pipeline /tuning" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="350" y="300" width="200" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="pages" value="Pages&#10;/  /facets  /live&#10;/pipeline  /tuning&#10;/admin  /change-password" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="570" y="300" width="200" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="api" value="API routes  /api/*&#10;threads · resources&#10;runtime · admin · eval" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="790" y="300" width="260" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="worker" value="In-process job worker&#10;durable, resumes after restart&#10;github / confluence / folder / graph" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="350" y="420" width="200" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="listeners" value="Runtime log listeners — one per configured source, started at boot&#10;TCP port the app pipes into (1024-65535, globally unique)  ·  or tail a log file (rotation-safe)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="570" y="420" width="480" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="embedder" value="Local embedder (default) — Transformers.js  all-MiniLM-L6-v2  ·  384-d  ·  CPU&#10;model cached under node_modules or TRANSFORMERS_CACHE — no vendor key, nothing leaves the box" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="350" y="525" width="700" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="sqlite" value="tesseract.db&#10;SQLite + sqlite-vec (WAL)&#10;orgs users resources documents&#10;chunks vec_chunks kg_* runtime_*" style="shape=cylinder3;boundedShape=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="350" y="640" width="330" height="110" as="geometry"/>
+        </mxCell>
+        <mxCell id="repos" value="data/repos&#10;git clones&#10;(per facet)" style="shape=cylinder3;boundedShape=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="700" y="640" width="160" height="110" as="geometry"/>
+        </mxCell>
+        <mxCell id="uploads" value="data/uploads&#10;originals" style="shape=cylinder3;boundedShape=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="880" y="640" width="170" height="110" as="geometry"/>
+        </mxCell>
+        <mxCell id="certs" value="certs/server.crt + server.key   (chmod 600, owned by the service account)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="350" y="770" width="700" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="anthropic" value="Anthropic API&#10;Claude — 3 admin-configurable&#10;reasoning tiers (low/medium/high)&#10;REQUIRED" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1170" y="105" width="340" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="openai" value="OpenAI API&#10;text-embedding-3-small (1536-d)&#10;only if embedding provider = OpenAI" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;dashed=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1170" y="215" width="340" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="github" value="GitHub&#10;clone public or private repos,&#10;per-branch; token in Admin" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1170" y="315" width="340" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="confluence" value="Confluence Cloud&#10;REST — space ingestion" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1170" y="415" width="340" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="mcp" value="MCP servers&#10;admin-configured connectors" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;dashed=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1170" y="495" width="340" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="pg" value="PostgreSQL 16 + pgvector   —   selected by PGVECTOR_URL, needs a restart&#10;chunks(embedding vector(dim)) + HNSW;  documents &amp; accounts stay in SQLite" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;dashed=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1170" y="700" width="340" height="110" as="geometry"/>
+        </mxCell>
+        <mxCell id="apache" value="Apache 2.4 (only where mandated)&#10;mod_proxy, flushpackets=on,&#10;ProxyTimeout 600" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;dashed=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1170" y="825" width="340" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="note_env" value="Deployment is one command:  sudo ./scripts/install-ubuntu.sh&#10;packages · Node 20 · service account · self-signed cert with the IP in the SAN&#10;.env.local with a generated AUTH_SECRET · build · seed · systemd unit.&#10;Re-running never overwrites config, certificates or accounts.&#10;&#10;Tesseract (full) additionally reaches OpenAI + Gemini for chat, Stripe for&#10;billing, and hosted OpenAI vector stores; it listens on 3002." style="shape=note;whiteSpace=wrap;html=1;fillColor=#FFF9B2;strokeColor=#D6B656;size=14;fontSize=10;align=left;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="300" y="1070" width="800" height="130" as="geometry"/>
+        </mxCell>
+        <mxCell id="e1" value="HTTPS 3005" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="browser" target="servermjs">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="fms_log" target="fms_pipe">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e3" value="raw log lines over TCP" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="fms_pipe" target="listeners">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e4" value="starts" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="systemd" target="servermjs">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e5" value="every request" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="servermjs" target="proxy">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e6" value="chat + tool loop" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="api" target="anthropic">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e7" value="or" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;dashed=1;strokeColor=#B3B3B3;" edge="1" parent="1" source="embedder" target="openai">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e8" value="git clone" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="worker" target="github">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e9" value="REST" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="worker" target="confluence">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e10" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;dashed=1;strokeColor=#B3B3B3;" edge="1" parent="1" source="api" target="mcp">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e11" value="read / write" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="api" target="sqlite">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e12" value="requests + queries" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="listeners" target="sqlite">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e13" value="clone" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="worker" target="repos">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e14" value="store originals" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="worker" target="uploads">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e15" value="vectors move here if set" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;dashed=1;strokeColor=#B3B3B3;" edge="1" parent="1" source="sqlite" target="pg">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e16" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;dashed=1;strokeColor=#B3B3B3;" edge="1" parent="1" source="certs" target="servermjs">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e17" value="optional proxy" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;dashed=1;strokeColor=#B3B3B3;" edge="1" parent="1" source="apache" target="servermjs">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e18" value="embed chunks" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="worker" target="embedder">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="flow-1" name="2 - Data flow">
+    <mxGraphModel dx="1400" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2000" pageHeight="980" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="dg_src" value="1 · Sources" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#8C8C8C;dashed=1;verticalAlign=top;fontStyle=1;fontSize=13;spacingTop=4;" vertex="1" parent="1">
+          <mxGeometry x="30" y="60" width="240" height="720" as="geometry"/>
+        </mxCell>
+        <mxCell id="dg_acq" value="2 · Acquire  (durable background jobs)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#8C8C8C;dashed=1;verticalAlign=top;fontStyle=1;fontSize=13;spacingTop=4;" vertex="1" parent="1">
+          <mxGeometry x="300" y="60" width="300" height="720" as="geometry"/>
+        </mxCell>
+        <mxCell id="dg_tr" value="3 · Extract &amp; chunk" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#8C8C8C;dashed=1;verticalAlign=top;fontStyle=1;fontSize=13;spacingTop=4;" vertex="1" parent="1">
+          <mxGeometry x="630" y="60" width="290" height="720" as="geometry"/>
+        </mxCell>
+        <mxCell id="dg_emb" value="4 · Embed" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#8C8C8C;dashed=1;verticalAlign=top;fontStyle=1;fontSize=13;spacingTop=4;" vertex="1" parent="1">
+          <mxGeometry x="950" y="60" width="300" height="720" as="geometry"/>
+        </mxCell>
+        <mxCell id="dg_st" value="5 · Store" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#8C8C8C;dashed=1;verticalAlign=top;fontStyle=1;fontSize=13;spacingTop=4;" vertex="1" parent="1">
+          <mxGeometry x="1280" y="60" width="320" height="720" as="geometry"/>
+        </mxCell>
+        <mxCell id="dg_q" value="6 · Answer a question" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#8C8C8C;dashed=1;verticalAlign=top;fontStyle=1;fontSize=13;spacingTop=4;" vertex="1" parent="1">
+          <mxGeometry x="1630" y="60" width="320" height="720" as="geometry"/>
+        </mxCell>
+        <mxCell id="s_gh" value="GitHub repository&#10;+ tracked branch" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#666666;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="50" y="100" width="200" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="s_cf" value="Confluence space" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#666666;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="50" y="175" width="200" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="s_up" value="Uploads&#10;PDF DOCX MD XLSX CSV&#10;source files" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#666666;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="50" y="235" width="200" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="s_fo" value="Folder upload&#10;(whole tree)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#666666;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="50" y="315" width="200" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="s_am" value="AppMap trace&#10;*.appmap.json" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#666666;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="50" y="375" width="200" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="s_log" value="Live Rails log&#10;from the running app" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="50" y="445" width="200" height="55" as="geometry"/>
+        </mxCell>
+        <mxCell id="s_note" value="A facet is owned by whoever&#10;added it and is private unless&#10;shared with the organization.&#10;Retrieval filters on that." style="shape=note;whiteSpace=wrap;html=1;fillColor=#FFF9B2;strokeColor=#D6B656;size=14;fontSize=10;align=left;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="50" y="530" width="200" height="110" as="geometry"/>
+        </mxCell>
+        <mxCell id="a_gh" value="github_ingest&#10;clone to data/repos, then bundle files as&#10;&quot;## File: &lt;path&gt;&quot; sections" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="315" y="100" width="270" height="75" as="geometry"/>
+        </mxCell>
+        <mxCell id="a_cf" value="confluence_ingest&#10;pages over REST; unchanged pages skipped&#10;by content_hash" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="315" y="190" width="270" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="a_up" value="inline ingest / folder_ingest&#10;stage to disk, then extract" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="315" y="275" width="270" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="a_am" value="graph_ingest&#10;parse the AppMap trace" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="315" y="350" width="270" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="a_log" value="RailsLogParser — state machine&#10;accumulates a burst into one request:&#10;Started / Processing / SQL / CACHE /&#10;↳ file:line:in &#39;method&#39; / Completed" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="315" y="420" width="270" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="t_ex" value="extractText&#10;pdf-parse · mammoth · exceljs · plain text" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="645" y="100" width="260" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="t_ch" value="chunkText&#10;3600 chars, 400 overlap (tunable)&#10;bundle split keeps the REAL file path&#10;in chunk meta.path" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="645" y="175" width="260" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="t_kg" value="rails-graph static extractor&#10;models · tables · controllers&#10;routes · jobs · services" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="645" y="285" width="260" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="t_np" value="detectNPlusOne (cache hits excluded)&#10;+ enrichGraph: route / controller / table&#10;folded in as resource_id &#39;live-runtime&#39;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="645" y="385" width="260" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="t_note" value="Chunking changes apply only to&#10;material indexed afterwards —&#10;existing chunks keep their shape&#10;until the facet is re-synced." style="shape=note;whiteSpace=wrap;html=1;fillColor=#FFF9B2;strokeColor=#D6B656;size=14;fontSize=10;align=left;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="645" y="500" width="260" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_dispatch" value="embedTexts(orgId, texts)&#10;embeddingConfig(orgId) picks the provider" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="965" y="100" width="270" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_local" value="local (default)&#10;all-MiniLM-L6-v2&#10;384 dimensions&#10;no vendor key" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="965" y="180" width="130" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_openai" value="openai&#10;text-embedding-&#10;3-small&#10;1536 dimensions" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;dashed=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1105" y="180" width="130" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_geo" value="ensureVectorGeometry(dim)&#10;the live width is read back off the index&#39;s own&#10;definition, so it cannot drift. A provider switch&#10;DROPs the index and clears content_hash, so the&#10;next sync re-embeds everything." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="965" y="300" width="270" height="115" as="geometry"/>
+        </mxCell>
+        <mxCell id="e_note" value="Anthropic has no embeddings API.&#10;That is why the embedder is a&#10;separate, pluggable choice from&#10;the model that answers." style="shape=note;whiteSpace=wrap;html=1;fillColor=#FFF9B2;strokeColor=#D6B656;size=14;fontSize=10;align=left;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="965" y="435" width="270" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="d_doc" value="documents&#10;org · resource · path · content_hash" style="shape=cylinder3;boundedShape=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1295" y="100" width="290" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="d_ch" value="chunks&#10;content + meta.path" style="shape=cylinder3;boundedShape=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1295" y="180" width="290" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="d_vec" value="vec_chunks   —   sqlite-vec&#10;vec0(embedding float[dim])" style="shape=cylinder3;boundedShape=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1295" y="255" width="290" height="65" as="geometry"/>
+        </mxCell>
+        <mxCell id="d_pg" value="pgvector  chunks(embedding vector(dim))&#10;+ HNSW   —   when PGVECTOR_URL is set" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF2CC;strokeColor=#D6B656;dashed=1;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1295" y="335" width="290" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="d_kg" value="kg_entities / kg_edges&#10;static analysis AND live observation&#10;in ONE graph" style="shape=cylinder3;boundedShape=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1295" y="425" width="290" height="75" as="geometry"/>
+        </mxCell>
+        <mxCell id="d_rt" value="runtime_requests / runtime_queries&#10;rolling 50k window · source attribution&#10;(file:line + method) · N+1 verdict" style="shape=cylinder3;boundedShape=1;whiteSpace=wrap;html=1;fillColor=#D5E8D4;strokeColor=#82B366;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1295" y="515" width="290" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="q_ask" value="Question (+ optional facet scope)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1645" y="100" width="290" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="q_ret" value="searchLocal — embed the query,&#10;cosine top-K (default 8), filtered to&#10;the facets this person may see" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#E1D5E7;strokeColor=#9673A6;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1645" y="160" width="290" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="q_tools" value="Tool loop&#10;search_knowledge_base&#10;query_app_graph&#10;query_runtime (summary | recent |&#10;coverage | metaprogramming)&#10;generate_file · MCP · web_search" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1645" y="255" width="290" height="120" as="geometry"/>
+        </mxCell>
+        <mxCell id="q_llm" value="Claude — tier maps to model + effort" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE6CC;strokeColor=#D79B00;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1645" y="390" width="290" height="45" as="geometry"/>
+        </mxCell>
+        <mxCell id="q_ans" value="Answer + citations&#10;back to the exact file / page,&#10;plus generated xlsx / docx / pdf / csv" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DAE8FC;strokeColor=#6C8EBF;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1645" y="450" width="290" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="m_join" value="THE JOIN — metaprogrammingReport()&#10;&#10;runtime_queries.source / source_method    ⋈    chunks.meta.path&#10;&#10;for every method that ACTUALLY executed, look it up in the indexed source of the file it&#10;claims to come from:   defined  ·  GENERATED (not in that file)  ·  not indexed (no claim made)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="630" y="640" width="970" height="120" as="geometry"/>
+        </mxCell>
+        <mxCell id="m_cov" value="runtimeCoverage() — controllers in source vs controllers serving traffic:&#10;exercised · unexercised (deprecation candidates) · serving traffic but absent from static analysis" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8CECC;strokeColor=#B85450;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="630" y="775" width="970" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="m_note" value="This is the pair no APM can produce, because an APM never parsed the source, and no static&#10;analyser can produce, because the methods do not exist until the app runs. Both halves have to&#10;land in one place, which is the reason this system exists." style="shape=note;whiteSpace=wrap;html=1;fillColor=#FFF9B2;strokeColor=#D6B656;size=14;fontSize=10;align=left;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="630" y="850" width="970" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="d1" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="s_gh" target="a_gh">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d2" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="s_cf" target="a_cf">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d3" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="s_up" target="a_up">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="s_fo" target="a_up">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d5" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="s_am" target="a_am">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d6" value="TCP port or file tail" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="s_log" target="a_log">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d7" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="a_gh" target="t_ch">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d8" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="a_cf" target="t_ex">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d9" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="a_up" target="t_ex">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d10" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="t_ex" target="t_ch">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d11" value="Rails source" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="a_gh" target="t_kg">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d12" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="a_am" target="t_kg">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d13" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="a_log" target="t_np">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d14" value="chunks" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="t_ch" target="e_dispatch">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d15" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="e_dispatch" target="e_local">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d16" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;dashed=1;strokeColor=#B3B3B3;" edge="1" parent="1" source="e_dispatch" target="e_openai">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d17" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="e_local" target="e_geo">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d18" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;dashed=1;strokeColor=#B3B3B3;" edge="1" parent="1" source="e_openai" target="e_geo">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d19" value="vectors" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="e_geo" target="d_vec">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d20" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;dashed=1;strokeColor=#B3B3B3;" edge="1" parent="1" source="e_geo" target="d_pg">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d21" value="text + meta.path" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="t_ch" target="d_ch">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d22" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="t_ex" target="d_doc">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d23" value="static facts" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="t_kg" target="d_kg">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d24" value="live facts" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="t_np" target="d_kg">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d25" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="t_np" target="d_rt">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d26" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="q_ask" target="q_ret">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d27" value="similarity" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="d_vec" target="q_ret">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d28" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;dashed=1;strokeColor=#B3B3B3;" edge="1" parent="1" source="d_pg" target="q_ret">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d29" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="q_ret" target="q_tools">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d30" value="graph" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="d_kg" target="q_tools">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d31" value="runtime" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="d_rt" target="q_tools">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d32" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="q_tools" target="q_llm">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d33" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="q_llm" target="q_ans">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d34" value="what ran" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="d_rt" target="m_join">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d35" value="what is written" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="d_ch" target="m_join">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d36" value="action=metaprogramming" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="m_join" target="q_tools">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d37" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="d_kg" target="m_cov">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="d38" value="action=coverage" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=10;endArrow=blockThin;endFill=1;" edge="1" parent="1" source="m_cov" target="q_tools">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
