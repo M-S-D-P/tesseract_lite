@@ -6,14 +6,22 @@
 // It is a ground-truth test. The fixture below is written so the correct answer
 // is known in advance, and the script fails loudly if the system disagrees:
 //
-//   total_due                     defined    (written in ledger.rb)
-//   display_name                  defined    (written in tenant.rb)
-//   paid_through_for_invoiceable  GENERATED  (manufactured by a concern via
-//                                             define_method; appears nowhere
-//                                             in ledger.rb, yet issues SQL)
-//   index (ghost_controller.rb)   unknown    (file not indexed — the system
-//                                             must refuse to judge it rather
-//                                             than call it metaprogramming)
+//   total_due                      defined    (written in ledger.rb)
+//   display_name                   defined    (written in tenant.rb)
+//   block in <class:Ledger>        GENERATED  (a define_method loop in the model
+//                                              file, as app/models/facility.rb
+//                                              does in FMS; Ruby labels the frame
+//                                              this way and no such def exists)
+//   exclude_from_insurance_...     defined    (delegate — Rails attributes it to
+//                                              the model file under its own name,
+//                                              and the macro IS visible there, so
+//                                              it must not be flagged)
+//   index (ghost_controller.rb)    unknown    (file not indexed — the system must
+//                                              refuse to judge it rather than call
+//                                              it metaprogramming)
+//
+// The log below uses the frame labels Ruby 3.3 actually produces for each
+// mechanism, measured rather than assumed, so this tests real Rails output.
 //
 // Usage — against a running instance:
 //
@@ -47,18 +55,21 @@ if (!EMAIL || !PASSWORD) {
 
 const FILES = {
   "app/models/ledger.rb": `class Ledger < ApplicationRecord
-  include Delinquency
-
   belongs_to :tenant
   has_many :line_items
+
+  # Manufactured in a loop, exactly as app/models/facility.rb:1788 does in FMS.
+  # Ruby records the block's location here, and labels the frame
+  # "block in <class:Ledger>" — which is what the log will show.
+  [:invoiceable, :subscription].each do |kind|
+    define_method("paid_through_for_#{kind}") do
+      ledger_delinquencies.where(exited_delinquency_at: nil).first
+    end
+  end
 
   # This one IS written here. Static analysis finds it.
   def total_due
     line_items.sum(:amount)
-  end
-
-  def self.for_facility(facility_id)
-    where(facility_id: facility_id)
   end
 end
 `,
@@ -78,6 +89,13 @@ end
 `,
   "app/models/tenant.rb": `class Tenant < ApplicationRecord
   has_many :ledgers
+  has_one :settings
+
+  # Rails passes the CALLER's file and line to module_eval, so a query issued
+  # inside this forwarding method is attributed to this file under the
+  # delegated method's own name. Static analysis can see the macro, so this
+  # must NOT be reported as generated.
+  delegate :exclude_from_insurance_auto_enroll, to: :settings
 
   def display_name
     "#{first_name} #{last_name}"
@@ -96,11 +114,13 @@ Processing by LedgersController#show as HTML
   LineItem Sum (3.4ms)  SELECT SUM("line_items"."amount") FROM "line_items" WHERE "line_items"."ledger_id" = $1
   ↳ app/models/ledger.rb:9:in \`total_due'
   LedgerDelinquency Load (0.9ms)  SELECT "ledger_delinquencies".* FROM "ledger_delinquencies" WHERE "ledger_delinquencies"."exited_delinquency_at" IS NULL LIMIT $1
-  ↳ app/models/ledger.rb:1763:in \`paid_through_for_invoiceable'
+  ↳ app/models/ledger.rb:9:in \`block in <class:Ledger>'
   LedgerDelinquency Load (0.8ms)  SELECT "ledger_delinquencies".* FROM "ledger_delinquencies" WHERE "ledger_delinquencies"."exited_delinquency_at" IS NULL LIMIT $1
-  ↳ app/models/ledger.rb:1763:in \`paid_through_for_invoiceable'
+  ↳ app/models/ledger.rb:9:in \`block in <class:Ledger>'
+  Setting Load (0.4ms)  SELECT "settings".* FROM "settings" WHERE "settings"."owner_id" = $1 LIMIT $2
+  ↳ app/models/tenant.rb:8:in \`exclude_from_insurance_auto_enroll'
   Tenant Load (0.5ms)  SELECT "tenants".* FROM "tenants" WHERE "tenants"."id" = $1 LIMIT $2
-  ↳ app/models/tenant.rb:4:in \`display_name'
+  ↳ app/models/tenant.rb:11:in \`display_name'
   Ghost Load (2.1ms)  SELECT "ghosts".* FROM "ghosts" WHERE "ghosts"."live" = $1
   ↳ app/controllers/ghost_controller.rb:9:in \`index'
 Completed 200 OK in 88ms (Views: 40.0ms | ActiveRecord: 8.9ms)
@@ -216,9 +236,15 @@ try {
   console.log("\nGround truth:");
   const results = [
     check(
-      "paid_through_for_invoiceable is reported as GENERATED (define_method, absent from ledger.rb)",
-      generated.includes("paid_through_for_invoiceable@app/models/ledger.rb"),
+      "a define_method loop in the model file is reported as GENERATED " +
+        "(frame 'block in <class:Ledger>' is no def in ledger.rb)",
+      generated.includes("<class:Ledger>@app/models/ledger.rb"),
       true
+    ),
+    check(
+      "a delegated method is NOT called generated — the macro is visible statically",
+      generated.includes("exclude_from_insurance_auto_enroll@app/models/tenant.rb"),
+      false
     ),
     check(
       "total_due, which IS written in ledger.rb, is not called generated",
