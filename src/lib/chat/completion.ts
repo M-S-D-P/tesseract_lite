@@ -187,7 +187,9 @@ export async function runCompletion(opts: {
         return JSON.stringify(runtimeCoverage(opts.orgId, sources));
       }
       if (action === "metaprogramming") {
-        return JSON.stringify(await metaprogrammingReport(opts.orgId, sources));
+        return JSON.stringify(
+          await metaprogrammingReport(opts.orgId, sources, opts.userId)
+        );
       }
       return JSON.stringify(
         runtimeSummary(opts.orgId, Number(args.minutes) || 60, sources)

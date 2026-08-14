@@ -11,7 +11,8 @@ export async function GET() {
     return Response.json(
       await metaprogrammingReport(
         user.orgId,
-        visibleSourceIds(user.orgId, user.id, user.role === "admin")
+        visibleSourceIds(user.orgId, user.id, user.role === "admin"),
+        user.id
       )
     );
   } catch (e) {

@@ -220,6 +220,28 @@ CREATE TABLE IF NOT EXISTS runtime_queries (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_runtime_q_org ON runtime_queries(org_id, created_at DESC);
+-- Methods observed executing, from an AppMap trace. The log can only reveal a
+-- method that happened to be on the stack when SQL was issued; AppMap records
+-- EVERY instrumented call together with the location Ruby reports for it
+-- (Method#source_location), so a generated method that touches no database at
+-- all is visible here and nowhere else.
+CREATE TABLE IF NOT EXISTS runtime_methods (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  org_id TEXT NOT NULL,
+  resource_id TEXT,                    -- the facet the trace was uploaded as
+  origin TEXT NOT NULL DEFAULT 'appmap',
+  trace TEXT,
+  defined_class TEXT,
+  method_id TEXT NOT NULL,
+  is_static INTEGER NOT NULL DEFAULT 0,
+  path TEXT,                           -- where Ruby says the method is defined
+  lineno INTEGER,
+  executions INTEGER NOT NULL DEFAULT 0,
+  total_ms REAL NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_runtime_methods_org ON runtime_methods(org_id);
+CREATE INDEX IF NOT EXISTS idx_runtime_methods_res ON runtime_methods(resource_id);
 CREATE INDEX IF NOT EXISTS idx_runtime_q_fp ON runtime_queries(org_id, fingerprint);
 -- Evaluation harness: question sets, runs pinned to a config, per-question results.
 CREATE TABLE IF NOT EXISTS eval_sets (

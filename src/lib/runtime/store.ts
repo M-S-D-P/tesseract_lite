@@ -492,6 +492,11 @@ async function indexedFileText(
 export type MetaprogrammingFinding = {
   method: string;
   file: string;
+  // "log"    — inferred from the ↳ attribution under a SQL statement, so only
+  //            methods that were on the stack when a query ran.
+  // "appmap" — an instrumented call event, so EVERY method that executed,
+  //            including those that touch no database at all.
+  origin: "log" | "appmap";
   executions: number;
   totalMs: number;
   // How much indexed text backed the judgement, so a verdict can be audited
@@ -504,7 +509,8 @@ export type MetaprogrammingFinding = {
 
 export async function metaprogrammingReport(
   orgId: string,
-  sourceIds?: string[] | null
+  sourceIds?: string[] | null,
+  userId?: string
 ) {
   const db = getDb();
   const f = sourceFilter(sourceIds);
@@ -596,11 +602,63 @@ export async function metaprogrammingReport(
     findings.push({
       method: e.frame,
       file: e.file,
+      origin: "log",
       executions: e.executions,
       totalMs: e.totalMs,
       chunksSeen: indexed?.chunks ?? 0,
       via,
       verdict,
+    });
+  }
+  findings.sort((a, b) => b.executions - a.executions);
+
+  // --- AppMap: every instrumented call, not only those that issued SQL -----
+  //
+  // AppMap records Method#source_location per call, so the check becomes a
+  // direct question — is there a definition of this method at the place Ruby
+  // says it lives? — with no frame label to parse.
+  let appmapRows: {
+    defined_class: string | null;
+    method_id: string;
+    path: string | null;
+    lineno: number | null;
+    executions: number;
+    total_ms: number;
+  }[] = [];
+  try {
+    appmapRows = db
+      .prepare(
+        `SELECT defined_class, method_id, path, lineno,
+                SUM(executions) executions, ROUND(SUM(total_ms),1) total_ms
+         FROM runtime_methods
+         WHERE org_id = ? AND path IS NOT NULL
+           ${userId ? "AND (resource_id IS NULL OR resource_id IN (SELECT id FROM resources WHERE org_id = ? AND (visibility = 'org' OR created_by = ?)))" : ""}
+         GROUP BY defined_class, method_id, path, lineno
+         ORDER BY SUM(executions) DESC
+         LIMIT 400`
+      )
+      .all(...(userId ? [orgId, orgId, userId] : [orgId])) as typeof appmapRows;
+  } catch {
+    appmapRows = []; // table not migrated yet
+  }
+
+  for (const row of appmapRows) {
+    if (!cache.has(row.path!)) cache.set(row.path!, await indexedFileText(orgId, row.path!));
+    const indexed = cache.get(row.path!) ?? null;
+    findings.push({
+      method: row.defined_class ? `${row.defined_class}#${row.method_id}` : row.method_id,
+      file: row.path!,
+      origin: "appmap",
+      executions: row.executions,
+      totalMs: row.total_ms,
+      chunksSeen: indexed?.chunks ?? 0,
+      via: null,
+      verdict:
+        indexed === null
+          ? "unknown"
+          : definesMethod(indexed.text, row.method_id)
+            ? "defined"
+            : "generated",
     });
   }
   findings.sort((a, b) => b.executions - a.executions);
@@ -620,6 +678,9 @@ export async function metaprogrammingReport(
     unknownCount: unknown.length,
     unindexedFiles: [...new Set(unknown.map((x) => x.file))].slice(0, 40),
     observedMethods: findings.length,
+    // Split so the difference in evidence quality is visible rather than implied.
+    fromAppMap: findings.filter((f) => f.origin === "appmap").length,
+    fromLog: findings.filter((f) => f.origin === "log").length,
   };
 }
 

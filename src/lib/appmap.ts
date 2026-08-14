@@ -9,7 +9,8 @@ import { getDb } from "./db";
 type CodeObject = {
   name: string;
   type: string; // package | class | function
-  location?: string;
+  location?: string; // "app/models/facility.rb:1795" — Ruby's source_location
+  static?: boolean;
   children?: CodeObject[];
 };
 
@@ -19,6 +20,10 @@ type AppMapEvent = {
   sql_query?: { sql?: string };
   defined_class?: string;
   method_id?: string;
+  static?: boolean;
+  path?: string;
+  lineno?: number;
+  elapsed?: number;
 };
 
 type AppMap = {
@@ -45,7 +50,7 @@ export function analyzeAppMap(
   resourceId: string,
   filename: string,
   buffer: Buffer
-): { summary: string; entities: number; edges: number } | null {
+): { summary: string; entities: number; edges: number; methods: number } | null {
   let map: AppMap;
   try {
     map = JSON.parse(buffer.toString("utf8"));
@@ -68,6 +73,24 @@ export function analyzeAppMap(
     },
   });
 
+  // Every function the trace saw, with the location Ruby reports for it. This
+  // is the field that makes AppMap strictly better evidence than a log line:
+  // it is Method#source_location, so for a generated method it points at the
+  // define_method block rather than at a def that does not exist.
+  const methods = new Map<
+    string,
+    {
+      definedClass: string;
+      methodId: string;
+      isStatic: boolean;
+      path: string | null;
+      lineno: number | null;
+      executions: number;
+      totalMs: number;
+    }
+  >();
+  const methodKey = (cls: string, m: string) => `${cls}#${m}`;
+
   // classMap → classes/functions observed at runtime
   const functions: string[] = [];
   const classes: string[] = [];
@@ -89,6 +112,17 @@ export function analyzeAppMap(
       }
       if (o.type === "function") {
         functions.push(qualified);
+        const [locPath, locLine] = (o.location ?? "").split(":");
+        const definedClass = prefix || "";
+        methods.set(methodKey(definedClass, o.name), {
+          definedClass,
+          methodId: o.name,
+          isStatic: Boolean(o.static),
+          path: locPath || null,
+          lineno: locLine ? Number(locLine) : null,
+          executions: 0,
+          totalMs: 0,
+        });
       }
       if (o.children) walk(o.children, o.type === "package" ? qualified : qualified);
     }
@@ -110,6 +144,31 @@ export function analyzeAppMap(
     }
     if (ev.sql_query?.sql) {
       for (const t of tablesFromSql(ev.sql_query.sql)) sqlTables.add(t);
+    }
+    // Call events carry the execution itself. Count them, and fall back to the
+    // event's own path/lineno when the classMap did not describe the method.
+    if (ev.method_id) {
+      const cls = ev.defined_class ?? "";
+      const key = methodKey(cls, ev.method_id);
+      const existing = methods.get(key);
+      if (existing) {
+        existing.executions += 1;
+        existing.totalMs += (ev.elapsed ?? 0) * 1000;
+        if (!existing.path && ev.path) {
+          existing.path = ev.path;
+          existing.lineno = ev.lineno ?? null;
+        }
+      } else {
+        methods.set(key, {
+          definedClass: cls,
+          methodId: ev.method_id,
+          isStatic: Boolean(ev.static),
+          path: ev.path ?? null,
+          lineno: ev.lineno ?? null,
+          executions: 1,
+          totalMs: (ev.elapsed ?? 0) * 1000,
+        });
+      }
     }
   }
   for (const r of routes) {
@@ -135,6 +194,26 @@ export function analyzeAppMap(
     for (const e of edges) {
       insR.run(orgId, resourceId, e.src_kind, e.src, e.rel, e.dst_kind, e.dst, filename, JSON.stringify(e.meta));
     }
+
+    // Method-level runtime evidence. Replaced wholesale for this facet so a
+    // re-upload does not double-count.
+    db.prepare("DELETE FROM runtime_methods WHERE org_id = ? AND resource_id = ?").run(
+      orgId,
+      resourceId
+    );
+    const insM = db.prepare(
+      `INSERT INTO runtime_methods
+       (org_id, resource_id, origin, trace, defined_class, method_id, is_static, path, lineno, executions, total_ms)
+       VALUES (?,?,'appmap',?,?,?,?,?,?,?,?)`
+    );
+    for (const m of methods.values()) {
+      if (!m.methodId) continue;
+      insM.run(
+        orgId, resourceId, traceName, m.definedClass || null, m.methodId,
+        m.isStatic ? 1 : 0, m.path, m.lineno,
+        m.executions, Math.round(m.totalMs * 10) / 10
+      );
+    }
   });
   tx();
 
@@ -152,5 +231,5 @@ export function analyzeAppMap(
     .filter(Boolean)
     .join("\n\n");
 
-  return { summary, entities: entities.length, edges: edges.length };
+  return { summary, entities: entities.length, edges: edges.length, methods: methods.size };
 }
