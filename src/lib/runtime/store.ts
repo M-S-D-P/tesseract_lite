@@ -415,15 +415,43 @@ function baseMethodName(method: string): string {
     .trim();
 }
 
+// A frame that is a BLOCK rather than a named method. This matters more than it
+// looks: when Ruby manufactures a method with define_method, the running code is
+// the block that was passed, so the frame reads "block in <the macro>" or
+// "block in <class:Model>" — never the generated method's own name.
+function isBlockFrame(method: string): boolean {
+  return /^(block\s+(\(\d+\s+levels?\)\s+)?in|rescue\s+in)\s+/.test(method);
+}
+
+// Does this file manufacture methods at all? Used to tell a generated method
+// body apart from an ordinary block (an each loop inside a normal method).
+const GENERATORS = /\b(define_method|define_singleton_method|class_eval|instance_eval|module_eval|store_accessor|delegate)\b/;
+
+// Is this method's name discoverable in the source of this file — as a plain
+// def, or as an argument to a macro that declares it?
+//
+// The boundary is deliberately NOT \b. Ruby method names end in ? and !, and
+// \b after a non-word character requires a word character next, which never
+// happens in "def valid?(x)" or "def save!\n". Using \b here silently
+// misreported every predicate and bang method in the codebase as generated —
+// which in Rails is a very large share of all methods.
+const AFTER = "(?![A-Za-z0-9_?!])";
+
 function definesMethod(source: string, method: string): boolean {
   const n = method.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return [
-    new RegExp(`\\bdef\\s+(self\\.)?${n}\\b`),
-    new RegExp(`\\bscope\\s+:${n}\\b`),
-    new RegExp(`\\bdefine_method\\s*[(\\s]*[:'"]${n}\\b`),
-    new RegExp(`\\balias_method\\s+[:'"]${n}\\b`),
-    new RegExp(`\\battr_(reader|writer|accessor)[^\\n]*:${n}\\b`),
-    new RegExp(`\\bdelegate[^\\n]*:${n}\\b`),
+    // A hand-written definition.
+    new RegExp(`\\bdef\\s+(self\\.)?${n}${AFTER}`),
+    new RegExp(`\\bdefine_method\\s*[(\\s]*[:'"]${n}${AFTER}`),
+    new RegExp(`\\balias_method\\s+[:'"]${n}${AFTER}`),
+    // Declared by a macro. The method is generated, but its NAME is written
+    // here, so static analysis can see it and we must not claim otherwise.
+    new RegExp(`\\bscope\\s+:${n}${AFTER}`),
+    new RegExp(`\\battr_(reader|writer|accessor)[^\\n]*:${n}${AFTER}`),
+    new RegExp(`\\bstore_accessor(_\\w+)?\\s+:\\w+\\s*,\\s*:${n}${AFTER}`),
+    new RegExp(`\\bhstore_reference\\s+:\\w+\\s*,\\s*:${n}${AFTER}`),
+    // delegate lists run over several lines, so this one may cross newlines.
+    new RegExp(`\\bdelegate[\\s\\S]{0,600}?:${n}${AFTER}`),
   ].some((re) => re.test(source));
 }
 
@@ -469,6 +497,8 @@ export type MetaprogrammingFinding = {
   // How much indexed text backed the judgement, so a verdict can be audited
   // rather than taken on trust.
   chunksSeen: number;
+  // For a generated method body: the macro (or class scope) that produced it.
+  via: string | null;
   verdict: "defined" | "generated" | "unknown";
 };
 
@@ -525,14 +555,17 @@ export async function metaprogrammingReport(
   // SQL groups by source, which carries the line number, so fold first.
   const byMethod = new Map<
     string,
-    { file: string; method: string; executions: number; totalMs: number }
+    { file: string; frame: string; method: string; executions: number; totalMs: number }
   >();
   for (const row of observed) {
     const file = row.source.replace(/:\d+$/, "");
-    const method = baseMethodName(row.source_method);
+    const frame = row.source_method.trim();
+    const method = baseMethodName(frame);
     if (!method) continue;
-    const key = `${file}|${method}`;
-    const e = byMethod.get(key) ?? { file, method, executions: 0, totalMs: 0 };
+    // Keyed on the frame as logged, so "block in hstore_reference" is kept
+    // distinct from an ordinary call to hstore_reference.
+    const key = `${file}|${frame}`;
+    const e = byMethod.get(key) ?? { file, frame, method, executions: 0, totalMs: 0 };
     e.executions += row.executions;
     e.totalMs = Math.round((e.totalMs + row.total_ms) * 10) / 10;
     byMethod.set(key, e);
@@ -543,18 +576,31 @@ export async function metaprogrammingReport(
   for (const e of byMethod.values()) {
     if (!cache.has(e.file)) cache.set(e.file, await indexedFileText(orgId, e.file));
     const indexed = cache.get(e.file) ?? null;
+    let verdict: MetaprogrammingFinding["verdict"];
+    let via: string | null = null;
+    if (indexed === null) {
+      verdict = "unknown";
+    } else if (isBlockFrame(e.frame)) {
+      // The executing code is a block. If this file manufactures methods, that
+      // block IS the body of a generated method — the single most common shape
+      // in a Rails codebase, and invisible if you only look for a missing def.
+      if (GENERATORS.test(indexed.text)) {
+        verdict = "generated";
+        via = e.method; // the macro, or <class:Model> for an in-file loop
+      } else {
+        verdict = "defined";
+      }
+    } else {
+      verdict = definesMethod(indexed.text, e.method) ? "defined" : "generated";
+    }
     findings.push({
-      method: e.method,
+      method: e.frame,
       file: e.file,
       executions: e.executions,
       totalMs: e.totalMs,
       chunksSeen: indexed?.chunks ?? 0,
-      verdict:
-        indexed === null
-          ? "unknown"
-          : definesMethod(indexed.text, e.method)
-            ? "defined"
-            : "generated",
+      via,
+      verdict,
     });
   }
   findings.sort((a, b) => b.executions - a.executions);

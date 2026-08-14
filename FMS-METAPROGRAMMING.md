@@ -111,43 +111,57 @@ answer from that list and to say the list is empty rather than speculate.
 
 ---
 
-## Example 1 — Facility fees: a generated method that runs a dynamic finder
+## Example 1 — Auction fee: a method built from a string, with a page to click
 
-**The strongest one.** Both halves of the objection in a single line of code.
+**The strongest one, and fully traced from URL to SQL.**
 
-`app/models/facility.rb:1788–1797`:
+| | |
+|---|---|
+| **URL** | `GET /company/:company_id/facility/:facility_id/auctions/add_unit?ledger_id=<id>` |
+| **Route** | `config/routes.rb:1084` — `get 'add_unit', on: :collection, action: 'select_auction'` |
+| **Controller** | `AuctionsController#select_auction` — `app/controllers/auctions_controller.rb:50` |
+| **View** | `app/views/auctions/select_auction.html.erb:34` — `<%= apply_auction_fee_checkbox %>` |
+| **Helper** | `app/helpers/auctions_helper.rb:82` — calls `current_facility.settings.auction_fee?` then `.auction_fee` |
+| **Model** | `FacilitySettings#auction_fee?` — `app/models/facility_settings.rb:449` (a real `def`) |
+| **Generated method** | `FacilitySettings#auction_fee` — **no `def` anywhere** |
+
+The declaration is one line, `app/models/facility_settings.rb:27`:
 
 ```ruby
-[:admin_fee, :invoice_fee, :security_deposit, :fee_nsf,
- :california_fee_schedule].each do |fee_name|
-  define_method fee_name do
-    invoiceable_items.find_by_product_code(FeeInvoiceableItem::Types.const_get(fee_name.upcase))
+hstore_reference :data, :auction_fee, 'owner.invoiceable_items.fee'
+```
+
+and the macro that turns it into a method is
+`app/models/concerns/store_accessor_referenceable.rb:35`:
+
+```ruby
+define_method(field) do
+  value = instance_variable_get(object_iv_name)
+  unless value
+    id = send("#{field}_id".to_sym)
+    if id
+      value = instance_eval(selector_code).where(id: id).first   # ← line 40, the SQL
+      instance_variable_set(object_iv_name, value)
+    end
   end
+  value
 end
 ```
 
-Three things are true at once:
+Read that body carefully. The association path is **a string**, `'owner.invoiceable_items.fee'`,
+handed to `instance_eval` and only then queried. There is no `def auction_fee`,
+the traversal is not written as code anywhere, and it issues SQL — so Rails logs
+it with an attribution line.
 
-1. `Facility#admin_fee` is **not written anywhere**. It is built from a symbol
-   in a loop.
-2. Its body calls `find_by_product_code` — an ActiveRecord **dynamic finder**,
-   resolved through `DynamicMatchers`, which is precisely the
-   `find_by_user_id`-class method raised in review.
-3. It **issues SQL**, so Rails logs it with an attribution line.
+**Expected evidence:** a finding on
+`app/models/concerns/store_accessor_referenceable.rb`, frame
+`block in hstore_reference`, verdict **generated**, alongside the
+`invoiceable_items` SELECT. The panel names the generator, because the useful
+statement is not "a method is missing" but "this SQL was issued by a method body
+that a macro manufactured".
 
-**Page to visit:** any facility settings or fee page — e.g. *Facility →
-Settings → Fees*, or move-in pricing, anything that renders fee amounts. Paths
-look like `/company/:company_id/facility/:facility_id/…`.
-
-**Expected evidence:** a finding whose file is `app/models/facility.rb` and
-whose frame is `block in <class:Facility>`, because no such `def` exists in that
-file. The query beside it is the `invoiceable_items` lookup.
-
-**Why static analysis loses:** to know `admin_fee` exists you must evaluate the
-array literal, the loop, and `const_get(fee_name.upcase)`. To know what it
-*queries* you must resolve a finder that ActiveRecord itself synthesises.
-
----
+**Why static analysis loses:** to know `auction_fee` exists you must evaluate a
+macro call; to know what it queries you must evaluate a string as code.
 
 ## Example 2 — Delinquency fees: same shape, on the path that hurts
 
@@ -241,14 +255,36 @@ you must evaluate a `delegate` list, a set of macro calls, *and* a hash consulte
 at call time. `respond_to?` is decided dynamically. Reading `tenant.rb` shows
 declarations; the running object has methods.
 
-**Expected evidence:** the request with its `UPDATE … SET data = …` JSONB write,
-attributed into `app/models/tenant.rb` (the delegate line) and
-`lib/store_accessor_type_safety.rb`. Per section 2 the macro file is reported as
-**defined** — the macro genuinely is there — so the honest statement is: *these
-method names exist nowhere as definitions, here is the request that invoked
-them, here is the SQL it caused, and here are the four mechanisms that produced
-them.* Ask **What metaprogramming ran?** on that request and the model must
-ground its answer in the report rather than in what Rails usually does.
+**What a real run actually showed.** This flow was exercised against live FMS
+(`PATCH /company/2/facility/725/tenants/9688346`, 302, 567 ms, 31 queries) and
+the prediction above was only partly right. Reported as generated on that
+request were `block in phone_numbers_attributes=`
+(`app/models/concerns/phone_number_extension.rb` — `accepts_nested_attributes_for`
+generates the writer, the concern overrides it) and `tenant_account_kind_name=`.
+The delegate and `store_accessor` chain did **not** appear, for a good reason:
+those calls issued no SQL of their own on this path — the settings row was
+already loaded — so Rails emitted no attribution line for them. Nothing is
+invisible here that touched the database; things that touched nothing leave no
+trace, which is the documented limit in section 2.
+
+### "Why was line 161 not flagged?"
+
+Because line 161 is `def update`. Nothing executes *at* a `def` line — Ruby
+attributes a query to the line that issues it, which on that request was 174
+(`in 'update'`), 178 (`block in update`) and 365
+(`delinquency_exempt_param_changed?`). And `update` is a hand-written method, so
+"defined" is the correct verdict for it. There is no blind spot at 161; there is
+simply nothing there to catch.
+
+A related trap, found by running exactly this flow and worth stating because it
+was a real defect: `hyper?`, `can_access_application?`, `should_update_acs?` and
+`delinquency_exempt_param_changed?` were initially reported as generated. All
+four are ordinary `def`s. The check anchored its patterns with `\b`, which can
+never match after `?` or `!`, so **every predicate and bang method in the
+codebase looked generated**. Fixed, and now guarded by three regression
+assertions in the verifier. If you see a verdict that looks wrong, that is the
+class of bug to suspect first — and the reason each finding reports how much
+indexed source backed it.
 
 ---
 

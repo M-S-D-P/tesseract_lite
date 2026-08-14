@@ -71,6 +71,16 @@ const FILES = {
   def total_due
     line_items.sum(:amount)
   end
+
+  # Predicate and bang methods. A \\b boundary cannot match after ? or !, which
+  # silently misreported every one of these as generated. Regression guard.
+  def delinquent?
+    ledger_delinquencies.exists?
+  end
+
+  def close!
+    update!(closed_on: Date.today)
+  end
 end
 `,
   "app/models/concerns/delinquency.rb": `module Delinquency
@@ -87,6 +97,23 @@ end
   end
 end
 `,
+  // Mirrors app/models/concerns/store_accessor_referenceable.rb in FMS: a macro
+  // that manufactures a reader whose body evaluates a string path and queries.
+  // Ruby labels the running frame "block in hstore_reference", so a naive check
+  // finds "def hstore_reference" and wrongly calls it hand-written.
+  "app/models/concerns/store_accessor_referenceable.rb": `module StoreAccessorReferenceable
+  extend ActiveSupport::Concern
+
+  module ClassMethods
+    def hstore_reference(hstore_column, field, selector_code, options = {})
+      define_method(field) do
+        id = send("#{field}_id".to_sym)
+        instance_eval(selector_code).where(id: id).first if id
+      end
+    end
+  end
+end
+`,
   "app/models/tenant.rb": `class Tenant < ApplicationRecord
   has_many :ledgers
   has_one :settings
@@ -95,6 +122,11 @@ end
   # inside this forwarding method is attributed to this file under the
   # delegated method's own name. Static analysis can see the macro, so this
   # must NOT be reported as generated.
+  # A multi-line delegate list — the name is not on the macro's own line.
+  delegate :hyper?,
+           :can_access_fms?,
+           to: :role
+
   delegate :exclude_from_insurance_auto_enroll, to: :settings
 
   def display_name
@@ -119,8 +151,16 @@ Processing by LedgersController#show as HTML
   ↳ app/models/ledger.rb:9:in \`block in <class:Ledger>'
   Setting Load (0.4ms)  SELECT "settings".* FROM "settings" WHERE "settings"."owner_id" = $1 LIMIT $2
   ↳ app/models/tenant.rb:8:in \`exclude_from_insurance_auto_enroll'
+  FeeInvoiceableItem Load (1.4ms)  SELECT "invoiceable_items".* FROM "invoiceable_items" WHERE "invoiceable_items"."id" = $1 LIMIT $2
+  ↳ app/models/concerns/store_accessor_referenceable.rb:8:in \`block in hstore_reference'
   Tenant Load (0.5ms)  SELECT "tenants".* FROM "tenants" WHERE "tenants"."id" = $1 LIMIT $2
   ↳ app/models/tenant.rb:11:in \`display_name'
+  LedgerDelinquency Exists (0.3ms)  SELECT 1 AS one FROM "ledger_delinquencies" WHERE "ledger_delinquencies"."ledger_id" = $1 LIMIT $2
+  ↳ app/models/ledger.rb:22:in \`delinquent?'
+  Ledger Update (0.6ms)  UPDATE "ledgers" SET "closed_on" = $1 WHERE "ledgers"."id" = $2
+  ↳ app/models/ledger.rb:26:in \`close!'
+  Role Load (0.4ms)  SELECT "roles".* FROM "roles" WHERE "roles"."id" = $1 LIMIT $2
+  ↳ app/models/tenant.rb:7:in \`can_access_fms?'
   Ghost Load (2.1ms)  SELECT "ghosts".* FROM "ghosts" WHERE "ghosts"."live" = $1
   ↳ app/controllers/ghost_controller.rb:9:in \`index'
 Completed 200 OK in 88ms (Views: 40.0ms | ActiveRecord: 8.9ms)
@@ -238,7 +278,13 @@ try {
     check(
       "a define_method loop in the model file is reported as GENERATED " +
         "(frame 'block in <class:Ledger>' is no def in ledger.rb)",
-      generated.includes("<class:Ledger>@app/models/ledger.rb"),
+      generated.includes("block in <class:Ledger>@app/models/ledger.rb"),
+      true
+    ),
+    check(
+      "a define_method body inside a macro is GENERATED, not mistaken for the macro's own def " +
+        "(frame 'block in hstore_reference')",
+      generated.includes("block in hstore_reference@app/models/concerns/store_accessor_referenceable.rb"),
       true
     ),
     check(
@@ -254,6 +300,21 @@ try {
     check(
       "display_name, which IS written in tenant.rb, is not called generated",
       generated.includes("display_name@app/models/tenant.rb"),
+      false
+    ),
+    check(
+      "a predicate method (def delinquent?) is NOT called generated",
+      generated.includes("delinquent?@app/models/ledger.rb"),
+      false
+    ),
+    check(
+      "a bang method (def close!) is NOT called generated",
+      generated.includes("close!@app/models/ledger.rb"),
+      false
+    ),
+    check(
+      "a name in a MULTI-LINE delegate list is NOT called generated",
+      generated.includes("can_access_fms?@app/models/tenant.rb"),
       false
     ),
     check(
